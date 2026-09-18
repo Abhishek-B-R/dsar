@@ -193,22 +193,15 @@ export const openDemoApp = (filename: string) => {
 
 	const eraseByEmail = (email: string): { readonly deleted: number } => {
 		const normalized = email.trim().toLowerCase();
-		const deletedAt = nowIso();
-		const users = db
-			.prepare(
-				"UPDATE users SET deleted_at = ? WHERE lower(email) = ? AND deleted_at IS NULL"
-			)
-			.run(deletedAt, normalized);
 		const sessions = db
-			.prepare(
-				"UPDATE sessions SET deleted_at = ? WHERE lower(email) = ? AND deleted_at IS NULL"
-			)
-			.run(deletedAt, normalized);
+			.prepare("DELETE FROM sessions WHERE lower(email) = ?")
+			.run(normalized);
 		const orders = db
-			.prepare(
-				"UPDATE orders SET deleted_at = ? WHERE lower(email) = ? AND deleted_at IS NULL"
-			)
-			.run(deletedAt, normalized);
+			.prepare("DELETE FROM orders WHERE lower(email) = ?")
+			.run(normalized);
+		const users = db
+			.prepare("DELETE FROM users WHERE lower(email) = ?")
+			.run(normalized);
 		return {
 			deleted:
 				Number(users.changes) +

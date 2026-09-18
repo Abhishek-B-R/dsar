@@ -122,14 +122,21 @@ const demoPeopleUrl = (dsarBaseUrl: string, email: string): string =>
 const demoEraseUrl = (dsarBaseUrl: string): string =>
 	`${demoOrigin(dsarBaseUrl)}/demo/erase`;
 
-const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
+const AcmeRecords = ({
+	person,
+	requestFulfilled,
+}: {
+	readonly person: AcmePerson | null;
+	readonly requestFulfilled: boolean;
+}) => {
 	if (person === null || person.user === null) {
 		return (
 			<div className="dsar-acme">
 				<p className="dsar-list-title">Held at Acme</p>
-				<p className="dsar-empty">
-					No product account for this email. Fulfilment will not delete
-					anything.
+				<p className={requestFulfilled ? "dsar-acme-ok" : "dsar-empty"}>
+					{requestFulfilled
+						? "Acme no longer has this email. Lookup returns nothing."
+						: "No product account for this email. Fulfilment will not delete anything."}
 				</p>
 			</div>
 		);
@@ -138,23 +145,16 @@ const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
 		person.sessions.live +
 		person.orders.live +
 		(person.user.deletedAt === null ? 1 : 0);
-	const erased = liveTotal === 0;
 	return (
 		<div className="dsar-acme">
 			<p className="dsar-list-title">Held at Acme</p>
 			<p className="dsar-meta">
 				{person.user.name} · {person.user.plan} plan
 			</p>
-			{erased ? (
-				<p className="dsar-acme-ok" role="status">
-					Nothing live remains. Account, sessions, and orders are tombstoned.
-				</p>
-			) : (
-				<p className="dsar-meta">
-					{String(liveTotal)} live record{liveTotal === 1 ? "" : "s"} will be
-					erased. Tables show a preview, not the full store.
-				</p>
-			)}
+			<p className="dsar-meta">
+				{String(liveTotal)} live record{liveTotal === 1 ? "" : "s"}. Preview
+				only, not the full store.
+			</p>
 			<table className="dsar-table">
 				<caption className="dsar-table-caption">
 					Sessions · {String(person.sessions.preview.length)} of{" "}
@@ -365,7 +365,7 @@ const QueueCard = ({
 				<p className="dsar-meta">{detail.requestor.email}</p>
 			)}
 			{text === undefined ? null : <p className="dsar-quote">{text}</p>}
-			<AcmeRecords person={person} />
+			<AcmeRecords person={person} requestFulfilled={status === "fulfilled"} />
 			<QueueActions
 				busy={busy}
 				liveRecords={liveRecords}
