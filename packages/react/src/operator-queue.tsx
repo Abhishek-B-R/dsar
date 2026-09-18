@@ -113,10 +113,14 @@ const fulfilLabel = (requestType: string | undefined, liveRecords: number) => {
 
 const formatMoney = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
 
-const demoPeopleUrl = (dsarBaseUrl: string, email: string): string => {
-	const origin = dsarBaseUrl.replace(/\/api\/v1\/?$/, "");
-	return `${origin}/demo/people?email=${encodeURIComponent(email)}`;
-};
+const demoOrigin = (dsarBaseUrl: string): string =>
+	dsarBaseUrl.replace(/\/api\/v1\/?$/, "");
+
+const demoPeopleUrl = (dsarBaseUrl: string, email: string): string =>
+	`${demoOrigin(dsarBaseUrl)}/demo/people?email=${encodeURIComponent(email)}`;
+
+const demoEraseUrl = (dsarBaseUrl: string): string =>
+	`${demoOrigin(dsarBaseUrl)}/demo/erase`;
 
 const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
 	if (person === null || person.user === null) {
@@ -217,6 +221,7 @@ const QueueActions = ({
 	busy,
 	liveRecords,
 	onAction,
+	onErase,
 	onRefuse,
 	path,
 	requestType,
@@ -225,6 +230,7 @@ const QueueActions = ({
 	readonly busy: boolean;
 	readonly liveRecords: number;
 	readonly onAction: (path: string, body: unknown) => void;
+	readonly onErase: () => void;
 	readonly onRefuse: () => void;
 	readonly path: (suffix: string) => string;
 	readonly requestType: string | undefined;
@@ -278,6 +284,11 @@ const QueueActions = ({
 				</button>
 			</>
 		) : null}
+		{status === "fulfilled" && liveRecords > 0 ? (
+			<button disabled={busy} onClick={onErase} type="button">
+				{`Erase leftover ${String(liveRecords)} record${liveRecords === 1 ? "" : "s"}`}
+			</button>
+		) : null}
 		{status === "fulfilled" || status === "refused" ? (
 			<button
 				className="dsar-btn-secondary"
@@ -295,6 +306,7 @@ const QueueCard = ({
 	busy,
 	detail,
 	onAction,
+	onErase,
 	onRefuse,
 	onRefuseCancel,
 	onRefuseReason,
@@ -306,6 +318,7 @@ const QueueCard = ({
 	readonly busy: boolean;
 	readonly detail: RequestDetail | undefined;
 	readonly onAction: (path: string, body: unknown) => void;
+	readonly onErase: () => void;
 	readonly onRefuse: () => void;
 	readonly onRefuseCancel: () => void;
 	readonly onRefuseReason: (value: string) => void;
@@ -357,6 +370,7 @@ const QueueCard = ({
 				busy={busy}
 				liveRecords={liveRecords}
 				onAction={onAction}
+				onErase={onErase}
 				onRefuse={onRefuse}
 				path={path}
 				requestType={requestType}
@@ -470,6 +484,28 @@ export const OperatorQueue = () => {
 		}
 	};
 
+	const eraseAcme = async (id: string, email: string) => {
+		setBusyId(id);
+		setAlertMessage(null);
+		try {
+			const response = await fetch(demoEraseUrl(client.baseUrl), {
+				body: JSON.stringify({ email }),
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				method: "POST",
+			});
+			if (!response.ok) {
+				setAlertMessage("Could not erase Acme records.");
+				return;
+			}
+			await refresh();
+		} catch {
+			setAlertMessage("Could not erase Acme records.");
+		} finally {
+			setBusyId(null);
+		}
+	};
+
 	return (
 		<div className="dsar-root dsar-root-wide">
 			<h1>Request queue</h1>
@@ -508,6 +544,15 @@ export const OperatorQueue = () => {
 										return;
 									}
 									void runAction(row.id, path, body);
+								}}
+								onErase={() => {
+									const email =
+										details[row.id]?.requestor?.email ?? row.requestor?.email;
+									if (email === undefined) {
+										setAlertMessage("No email on this request to erase.");
+										return;
+									}
+									void eraseAcme(row.id, email);
 								}}
 								onRefuse={() => {
 									setRefuseId(row.id);

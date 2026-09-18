@@ -202,40 +202,68 @@ const start = async (): Promise<void> => {
 		};
 	};
 
+	const emailFromJsonBody = async (request: Request): Promise<string> => {
+		const body: unknown = await request.json().catch(() => null);
+		if (
+			body !== null &&
+			typeof body === "object" &&
+			"email" in body &&
+			typeof body.email === "string"
+		) {
+			return body.email;
+		}
+		return "";
+	};
+
+	const handleFulfilmentWebhook = async (
+		request: Request
+	): Promise<Response> => {
+		const body: unknown = await request.json().catch(() => null);
+		if (
+			body === null ||
+			typeof body !== "object" ||
+			!("eventType" in body) ||
+			body.eventType !== "request_fulfilled" ||
+			!("requestId" in body) ||
+			typeof body.requestId !== "string"
+		) {
+			return Response.json({ ignored: true });
+		}
+		const found = await lookupRequest(body.requestId);
+		if (found?.email === undefined) {
+			return Response.json({ deleted: 0, reason: "no_email" });
+		}
+		if (found.requestType !== "delete") {
+			return Response.json({
+				deleted: 0,
+				email: found.email,
+				reason: "not_a_delete",
+			});
+		}
+		const erased = demoApp.eraseByEmail(found.email);
+		return Response.json({ deleted: erased.deleted, email: found.email });
+	};
+
 	const handleDemo = async (request: Request): Promise<Response | null> => {
 		const url = new URL(request.url);
 		if (url.pathname === demoPeoplePath && request.method === "GET") {
-			const email = url.searchParams.get("email") ?? "";
-			return Response.json(demoApp.lookupByEmail(email));
+			return Response.json(
+				demoApp.lookupByEmail(url.searchParams.get("email") ?? "")
+			);
 		}
-		if (url.pathname === demoWebhookPath && request.method === "POST") {
-			const body: unknown = await request.json().catch(() => null);
-			if (
-				body === null ||
-				typeof body !== "object" ||
-				!("eventType" in body) ||
-				body.eventType !== "request_fulfilled" ||
-				!("requestId" in body) ||
-				typeof body.requestId !== "string"
-			) {
-				return Response.json({ ignored: true });
-			}
-			const found = await lookupRequest(body.requestId);
-			if (found?.email === undefined) {
+		if (url.pathname === "/demo/erase" && request.method === "POST") {
+			const email = await emailFromJsonBody(request);
+			if (email.trim().length === 0) {
 				return Response.json(
 					{ deleted: 0, reason: "no_email" },
-					{ status: 200 }
+					{ status: 400 }
 				);
 			}
-			if (found.requestType !== "delete") {
-				return Response.json({
-					deleted: 0,
-					email: found.email,
-					reason: "not_a_delete",
-				});
-			}
-			const erased = demoApp.eraseByEmail(found.email);
-			return Response.json({ deleted: erased.deleted, email: found.email });
+			const erased = demoApp.eraseByEmail(email);
+			return Response.json({ deleted: erased.deleted, email });
+		}
+		if (url.pathname === demoWebhookPath && request.method === "POST") {
+			return handleFulfilmentWebhook(request);
 		}
 		return null;
 	};
@@ -258,6 +286,15 @@ const start = async (): Promise<void> => {
 				return;
 			}
 			const response = await runtime.handler(request);
+			const fulfilment = new URL(request.url).pathname.match(
+				/\/requests\/([^/]+)\/fulfilment$/
+			);
+			if (request.method === "POST" && fulfilment?.[1] && response.ok) {
+				const found = await lookupRequest(decodeURIComponent(fulfilment[1]));
+				if (found?.requestType === "delete" && found.email) {
+					demoApp.eraseByEmail(found.email);
+				}
+			}
 			await writeWebResponse(outgoing, response, origin);
 		} catch (error) {
 			console.error("Request handling failed:", error);

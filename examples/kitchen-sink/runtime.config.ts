@@ -214,16 +214,6 @@ export const runtimeConfig: DsarConfigOptions = {
 		),
 		environment:
 			process.env.NODE_ENV === "production" ? "production" : "development",
-		notificationWebhook: {
-			retryDelayMs: 50,
-			retryMaxAttempts: 3,
-			signingSecret: getString(
-				process.env.DSAR_DEMO_WEBHOOK_SECRET,
-				"dsar_demo_webhook_secret"
-			),
-			timeoutMs: 4000,
-			url: `http://127.0.0.1:${process.env.PORT ?? "3021"}/demo/webhooks/dsar`,
-		},
 		outboundResend: {
 			enabled: getBoolean(process.env.DSAR_OUTBOUND_RESEND_ENABLED, true),
 			fallbackRecipient: process.env.DSAR_OUTBOUND_RESEND_FALLBACK_RECIPIENT,
