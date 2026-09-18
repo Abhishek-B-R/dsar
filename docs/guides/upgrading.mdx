@@ -1,0 +1,93 @@
+---
+title: "Upgrading"
+description: "Move a published dsar@0.0.5 install to dsar@1.0.0. Covers Node 24, TypeScript 7, Effect 4, Chat SDK adapter storage, and the removed dsar/adapter-c15t export."
+group: guides
+---
+
+<include src="../_shared/alpha-warning.mdx" />
+
+This page is for the published `dsar` package line. Policy-pack pin, propose,
+approve, and apply is a different workflow. Use
+[Policy Versioning and Upgrades](../architecture/policy-versioning-and-upgrades.md)
+for tenant policy pins.
+
+## 0.0.5 to 1.0.0
+
+Published npm `dsar` is still `0.0.5`. The next cut is `1.0.0`, not `0.1.0`.
+These notes follow the pending `1.0.0` changelog and the unpublished changesets
+on main. They will drift if more changesets land before that version publishes.
+
+### Summary
+
+`1.0.0` is a major because of two pending majors:
+
+1. Runtime floor. Node.js 24, TypeScript 7, Effect `4.0.0-beta.101`, and Chat
+   SDK 4.34 adapter support with durable transcript lists, message queues, and
+   force-unlock.
+2. Changelog still records removal of the `dsar/adapter-c15t` umbrella export.
+   That export shipped on `0.0.2` through `0.0.4` and is already gone from
+   published `0.0.5`.
+
+The same `1.0.0` notes also include later work already on main. Unkey fail-closed
+auth, `dsar doctor` and `GET /status/diagnostics`, webhook dispatch list and
+replay, webhook receiver middleware, and appeal overturn coverage.
+
+### Breaking changes
+
+**Node.js 24.** `engines.node` is `>=24 <25` on the workspace root and the
+`dsar` umbrella. Published `0.0.5` did not set `engines`.
+
+**TypeScript 7.** The workspace catalog pins `typescript` to `7.0.2`. Compile
+application code with TypeScript 7.
+
+**Effect `4.0.0-beta.101`.** Keep `effect` and every `@effect/*` package on that
+same release line. Do not mix older Effect 4 betas.
+
+**Chat SDK 4.34 adapter storage.** Hosts that use the persistence-backed Chat
+SDK state adapter need Chat SDK 4.34 and persistence migration `0003`,
+`chat_runtime_lists_and_queues`. That migration adds `chat_state_list_keys`,
+`chat_state_lists`, and `chat_state_queues`.
+
+**`dsar/adapter-c15t`.** The `1.0.0` changelog still lists this as a major.
+Published `dsar@0.0.5` already omitted the export, so a `0.0.5` install has
+nothing to delete. If an older pin still imports `dsar/adapter-c15t` or
+`@dsar/adapter-c15t`, switch to a supported inbound adapter. Use
+[Resend](../integrations/inbound/resend.md) or
+[Slack](../integrations/inbound/slack.md), or inbound stub mode.
+
+### Migration steps
+
+1. Install Node.js 24. Confirm with `node --version`. This repo pins
+   `.node-version` to `24.18.0`.
+2. When `dsar@1.0.0` is published, upgrade the dependency. From this workspace,
+   that is the Version Packages release landing on main. There is no `0.1.0`
+   beta tag.
+3. Align TypeScript to 7 and Effect packages to `4.0.0-beta.101`.
+4. Rebuild anything that compiles against DSAR types on TypeScript 7.
+5. If you persist Chat SDK state through DSAR, start the runtime against your
+   existing database so ordered migrations apply `0003`. Do not hand-write the
+   DDL.
+6. Search the tree for `dsar/adapter-c15t` and `@dsar/adapter-c15t`. Replace
+   those imports if any remain.
+7. If you use `makeUnkeyBearerResolver`, thrown `verifyKey` failures now resolve
+   as unauthenticated instead of surfacing the provider exception. Wire
+   `onVerifyError` if you need to log or emit metrics. See
+   [Unkey Integration](../integrations/auth/unkey.md).
+8. Optional new surfaces already on main are included in the `1.0.0` notes.
+   `dsar doctor` and `GET /status/diagnostics`, webhook dispatch list and replay,
+   and Node SDK webhook receiver middleware. None of these are required to boot
+   `1.0.0`.
+
+### Rollback
+
+Pin back to `dsar@0.0.5` and keep the previous Node, TypeScript, and Effect
+versions if you cannot take the `1.0.0` runtime floor.
+
+Persistence migrations are forward-only in production. Dropping back to `0.0.5`
+does not remove `chat_state_*` tables. In development, drop the SQLite file and
+re-apply migrations. Postgres does not get an automatic down migration.
+
+Published `dsar@0.0.5` still depends on `workspace:*` and `catalog:*` specifiers.
+The `effect` peer is `catalog:effect`. A fresh npm install of that tarball can
+fail with an unsupported protocol. Rollback to `0.0.5` only works if you already
+have a working install.
