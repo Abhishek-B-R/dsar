@@ -10,7 +10,6 @@
 	},
 	"dependencies": {
 		"@dsar/react": "workspace:*",
-		"dsar": "workspace:*",
 		"next": "^16.2.11",
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0"

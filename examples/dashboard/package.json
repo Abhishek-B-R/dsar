@@ -3,14 +3,13 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "next dev --port 1355",
+		"dev": "next dev --port 1357",
 		"build": "next build",
-		"start": "next start --port 1355",
+		"start": "next start --port 1357",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@dsar/react": "workspace:*",
-		"dsar": "workspace:*",
 		"next": "^16.2.11",
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0"

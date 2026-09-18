@@ -17,12 +17,12 @@ and make your first request through the runtime.
 
 ## Fastest Local Path
 
-The quickest HTTP surface is kitchen-sink. For a UI, run the subject portal
-(in-process SQLite) or point `@dsar/react` at a hosted project on inth.com.
+The quickest HTTP surface is kitchen-sink, which is the local self-hosted
+backend. The subject portal and dashboard are UIs that call it. For
+production, point `@dsar/react` at a hosted project on inth.com.
 
 ```sh
-bunx turbo run dev --filter=./examples/kitchen-sink
-bunx turbo run dev --filter=./examples/subject-portal --filter=./examples/dashboard
+bunx turbo run dev --filter=./examples/kitchen-sink --filter=./examples/subject-portal --filter=./examples/dashboard
 ```
 
 - `examples/kitchen-sink/README.md`

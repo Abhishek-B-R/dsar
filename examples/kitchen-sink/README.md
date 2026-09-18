@@ -23,6 +23,9 @@ turbo run kitchen-sink --filter=dsar-kitchen-sink-example
 ## Notes
 
 - The local runtime defaults to `http://kitchen-sink.localhost:1355`.
+- This process is the **self-hosted backend** for `examples/subject-portal`
+  (`http://localhost:1356`) and `examples/dashboard` (`http://localhost:1357`).
+  Those UIs call `/api/v1` over CORS. CLI and SDK still use bearer tokens.
 - `DSAR_API_TOKEN` remains the simplest self-hosted setup: one tenant-scoped
   machine key for CLI, SDK, or automation.
 - `UNKEY_ROOT_KEY` is optional. When present, `runtime.config.ts` wires

@@ -6,6 +6,7 @@ import { dsarInstance, runtimeReposFromPersistence } from "dsar/backend";
 import { makePgPersistenceService } from "dsar/persistence-pg";
 import { makeSqlitePersistenceService } from "dsar/persistence-sqlite";
 
+import { corsAllowlist, corsOrigin } from "./local-ui";
 import { runtimeConfig } from "./runtime.config";
 
 const isCheckMode = process.argv.includes("--check");
@@ -86,11 +87,33 @@ const toWebRequest = async (
 	});
 };
 
+const writeCorsHeaders = (
+	outgoing: ServerResponse,
+	origin: string | undefined
+): void => {
+	const allowed = corsOrigin(origin, corsAllowlist());
+	if (!allowed) {
+		return;
+	}
+	outgoing.setHeader("Access-Control-Allow-Origin", allowed);
+	outgoing.setHeader("Access-Control-Allow-Credentials", "true");
+	outgoing.setHeader(
+		"Access-Control-Allow-Headers",
+		"content-type, authorization"
+	);
+	outgoing.setHeader(
+		"Access-Control-Allow-Methods",
+		"GET,POST,PUT,PATCH,DELETE,OPTIONS"
+	);
+};
+
 const writeWebResponse = async (
 	outgoing: ServerResponse,
-	response: Response
+	response: Response,
+	origin: string | undefined
 ): Promise<void> => {
 	outgoing.statusCode = response.status;
+	writeCorsHeaders(outgoing, origin);
 	for (const [key, value] of response.headers.entries()) {
 		outgoing.setHeader(key, value);
 	}
@@ -109,12 +132,22 @@ const start = async (): Promise<void> => {
 	});
 
 	const server = createServer(async (incoming, outgoing) => {
+		const origin = Array.isArray(incoming.headers.origin)
+			? incoming.headers.origin[0]
+			: incoming.headers.origin;
 		try {
+			if (incoming.method === "OPTIONS") {
+				writeCorsHeaders(outgoing, origin);
+				outgoing.statusCode = 204;
+				outgoing.end();
+				return;
+			}
 			const request = await toWebRequest(incoming, port);
 			const response = await runtime.handler(request);
-			await writeWebResponse(outgoing, response);
+			await writeWebResponse(outgoing, response, origin);
 		} catch (error) {
 			console.error("Request handling failed:", error);
+			writeCorsHeaders(outgoing, origin);
 			outgoing.statusCode = 500;
 			outgoing.end("Internal Server Error");
 		}

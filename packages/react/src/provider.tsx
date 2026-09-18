@@ -5,13 +5,13 @@ import type { ReactNode } from "react";
 
 import { createDsarBrowserClient } from "./client";
 import type { DsarBrowserClient } from "./client";
-import type { HostedMode } from "./hosted";
+import type { DsarClientMode } from "./hosted";
 
 const DsarClientContext = createContext<DsarBrowserClient | null>(null);
 
 export interface DsarProviderProps {
 	readonly children: ReactNode;
-	readonly mode: HostedMode;
+	readonly mode: DsarClientMode;
 	readonly fetch?: typeof fetch;
 }
 

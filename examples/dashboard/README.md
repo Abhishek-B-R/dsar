@@ -1,11 +1,14 @@
 # Operator dashboard example
 
-Next.js app that embeds `<OperatorQueue />` from `@dsar/react`.
-
-Local SQLite file, machine token only in the `/api/dsar` route. Hosted operator UI is inth.com; this example is the embeddable queue.
+Next.js UI that embeds `<OperatorQueue />` against the kitchen-sink self-hosted
+backend.
 
 ```sh
-bunx turbo run dev --filter=dsar-dashboard-example
+bunx turbo run dev --filter=dsar-kitchen-sink-example --filter=dsar-dashboard-example
 ```
 
-`http://localhost:1355`
+- Backend: `http://kitchen-sink.localhost:1355/api/v1`
+- Dashboard: `http://localhost:1357`
+
+Development CORS + trusted `Origin` maps this app to an operator identity.
+Override with `NEXT_PUBLIC_DSAR_URL`.

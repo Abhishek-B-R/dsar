@@ -1,9 +1,16 @@
 "use client";
 
-import { DsarProvider, SubjectPortal, hosted } from "@dsar/react";
+import {
+	DsarProvider,
+	LOCAL_SELF_HOST_URL,
+	SubjectPortal,
+	selfHosted,
+} from "@dsar/react";
+
+const backendUrl = process.env.NEXT_PUBLIC_DSAR_URL ?? LOCAL_SELF_HOST_URL;
 
 const Page = () => (
-	<DsarProvider mode={hosted({ url: "/api/dsar" })}>
+	<DsarProvider mode={selfHosted({ url: backendUrl })}>
 		<SubjectPortal />
 	</DsarProvider>
 );

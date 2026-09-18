@@ -1,6 +1,6 @@
 ---
 title: "React SDK"
-description: "Embed a subject portal or operator queue with @dsar/react. Hosted backends live on inth.com."
+description: "Embed a subject portal or operator queue with @dsar/react. Local self-host via kitchen-sink. Production backends live on inth.com."
 group: guides
 ---
 
@@ -18,19 +18,34 @@ import { DsarProvider, SubjectPortal, hosted } from "@dsar/react";
 </DsarProvider>
 ```
 
-Requests go to `https://acme.inth.app/dsar`. Webhooks for that project use the same origin (`https://acme.inth.app/dsar/webhooks/...`). Cookies stay on inth.app. Do not put `DSAR_API_TOKEN` in the browser.
+Requests go to `https://acme.inth.app/dsar`. Webhooks for that project use the same origin. Cookies stay on inth.app. Do not put `DSAR_API_TOKEN` in the browser.
 
-## Local demo
+## Local self-host
 
-`examples/subject-portal` and `examples/dashboard` run `dsarInstance` in a Next.js route on an in-process SQLite file, like the c15t demo's sqlite/turso file. The widget calls `/api/dsar`. The route attaches the demo bearer token.
+Run kitchen-sink as the DSAR HTTP server. The Next examples are UI only.
 
-```sh
-bunx turbo run dev --filter=dsar-subject-portal-example --filter=dsar-dashboard-example
+```tsx
+import { DsarProvider, SubjectPortal, selfHosted } from "@dsar/react";
+
+<DsarProvider
+	mode={selfHosted({ url: "http://kitchen-sink.localhost:1355/api/v1" })}
+>
+	<SubjectPortal />
+</DsarProvider>
 ```
 
+```sh
+bunx turbo run dev --filter=dsar-kitchen-sink-example --filter=dsar-subject-portal-example --filter=dsar-dashboard-example
+```
+
+- Backend: `http://kitchen-sink.localhost:1355/api/v1`
 - Subject portal: `http://localhost:1356`
-- Operator queue: `http://localhost:1355`
+- Operator queue: `http://localhost:1357`
+
+Kitchen-sink SQLite is the default store (`DSAR_PERSISTENCE_DRIVER=pg` for Postgres). In development it CORS-allows those UI origins and maps `Origin` to a demo subject or operator identity. CLI and SDK keep using bearer tokens.
 
 ## Docker Postgres
 
-Kitchen-sink already accepts `DSAR_PERSISTENCE_DRIVER=pg` and `DSAR_PERSISTENCE_PG_URL`. Point a portal example at that URL when you want Postgres instead of the SQLite file.
+```sh
+DSAR_PERSISTENCE_DRIVER=pg DSAR_PERSISTENCE_PG_URL=postgres://postgres:postgres@localhost:5432/dsar bunx turbo run dev --filter=dsar-kitchen-sink-example
+```

@@ -3,9 +3,9 @@
 React provider and portal widgets for DSAR. Same split as `@c15t/react`:
 
 - **Hosted** on inth.com: `hosted({ project: "acme" })` talks to `https://acme.inth.app/dsar`
-- **Local / self-host**: `hosted({ url: "/api/dsar" })` talks to your BFF, which holds the machine token
+- **Self-host**: `selfHosted({ url })` talks to your DSAR HTTP server (kitchen-sink locally)
 
-Do not pass `DSAR_API_TOKEN` into these components. The browser only sends cookies to inth.app, or same-origin requests to your BFF.
+Do not pass `DSAR_API_TOKEN` into these components.
 
 ```tsx
 import { DsarProvider, SubjectPortal, hosted } from "@dsar/react";
@@ -19,6 +19,16 @@ export function App() {
 }
 ```
 
-Webhooks for a hosted project use the same origin: `https://acme.inth.app/dsar/webhooks/...`
+Local:
 
-See `examples/subject-portal` (in-process SQLite) and `examples/dashboard`.
+```tsx
+import { DsarProvider, SubjectPortal, selfHosted } from "@dsar/react";
+
+<DsarProvider
+	mode={selfHosted({ url: "http://kitchen-sink.localhost:1355/api/v1" })}
+>
+	<SubjectPortal />
+</DsarProvider>
+```
+
+See `examples/kitchen-sink`, `examples/subject-portal`, and `examples/dashboard`.
