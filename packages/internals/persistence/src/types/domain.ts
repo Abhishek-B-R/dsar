@@ -673,7 +673,8 @@ export type NotificationDeliveryStatus =
 	| "pending"
 	| "delivered"
 	| "failed"
-	| "skipped";
+	| "skipped"
+	| "dead";
 
 /**
  * Immutable delivery-attempt event record associated with a notification event.
@@ -703,6 +704,15 @@ export interface NotificationDeliveryAttemptRecord {
 	readonly error?: string;
 	/** Timestamp when this record was created. */
 	readonly createdAt: string;
+	/**
+	 * When set, this row is due for a worker claim once the timestamp is
+	 * reached. Terminal delivered, skipped, and dead rows leave this empty.
+	 */
+	readonly nextAttemptAt?: string;
+	/** Timestamp when a worker claimed this row for dispatch, if any. */
+	readonly claimedAt?: string;
+	/** Exclusive lease expiry for the current claim, if any. */
+	readonly claimedUntil?: string;
 }
 
 /**
@@ -731,6 +741,62 @@ export interface CreateNotificationDeliveryAttemptInput {
 	readonly error?: string;
 	/** Timestamp when this record was created. */
 	readonly createdAt: string;
+	/** Optional due timestamp for a later worker retry. */
+	readonly nextAttemptAt?: string;
+	/** Optional claim timestamp recorded when a worker takes this row. */
+	readonly claimedAt?: string;
+	/** Optional exclusive lease expiry for the current claim. */
+	readonly claimedUntil?: string;
+}
+
+/**
+ * Patch payload for notification delivery-attempt retry state.
+ *
+ * @public
+ */
+export interface UpdateNotificationDeliveryAttemptInput {
+	/** Replacement delivery outcome status. */
+	readonly status?: NotificationDeliveryStatus;
+	/** Replacement provider response code, or `null` to clear. */
+	readonly responseCode?: number | null;
+	/** Replacement failure reason, or `null` to clear. */
+	readonly error?: string | null;
+	/** Replacement due timestamp, or `null` to unschedule the row. */
+	readonly nextAttemptAt?: string | null;
+	/** Replacement claim timestamp, or `null` to release the claim. */
+	readonly claimedAt?: string | null;
+	/** Replacement lease expiry, or `null` to release the claim. */
+	readonly claimedUntil?: string | null;
+}
+
+/**
+ * Filter used to list or claim retryable notification delivery attempts.
+ *
+ * @public
+ */
+export interface ClaimDueNotificationDeliveryAttemptsInput {
+	/** Current clock time compared against `nextAttemptAt` and claim leases. */
+	readonly now: string;
+	/** Exclusive lease expiry written onto successfully claimed rows. */
+	readonly claimUntil: string;
+	/** Optional channel filter, for example `webhook`. */
+	readonly channel?: string;
+	/** Maximum rows to claim in a single pass. */
+	readonly limit?: number;
+}
+
+/**
+ * Filter used to inspect due notification delivery attempts without claiming.
+ *
+ * @public
+ */
+export interface ListDueNotificationDeliveryAttemptsInput {
+	/** Current clock time compared against `nextAttemptAt` and claim leases. */
+	readonly now: string;
+	/** Optional channel filter, for example `webhook`. */
+	readonly channel?: string;
+	/** Maximum rows to read for a single page. */
+	readonly limit?: number;
 }
 
 /**
@@ -1558,6 +1624,53 @@ export interface NotificationDeliveryAttemptsRepository {
 		notificationEventId: string
 	) => Effect.Effect<
 		readonly NotificationDeliveryAttemptRecord[],
+		PersistenceError | SqlError,
+		TenantContext
+	>;
+	/**
+	 * Lists due, unclaimed delivery attempts for the current tenant.
+	 *
+	 * @param input - Due-work clock and optional channel/limit filters.
+	 * @returns Ordered {@link NotificationDeliveryAttemptRecord} entries.
+	 * @throws {@link PersistenceError} on mapping failures.
+	 * @throws {@link SqlError} on underlying database failures.
+	 */
+	readonly listDue: (
+		input: ListDueNotificationDeliveryAttemptsInput
+	) => Effect.Effect<
+		readonly NotificationDeliveryAttemptRecord[],
+		PersistenceError | SqlError,
+		TenantContext
+	>;
+	/**
+	 * Atomically claims due delivery attempts for the current tenant.
+	 *
+	 * @param input - Claim clock, lease expiry, and optional filters.
+	 * @returns Claimed {@link NotificationDeliveryAttemptRecord} entries.
+	 * @throws {@link PersistenceError} on mapping failures.
+	 * @throws {@link SqlError} on underlying database failures.
+	 */
+	readonly claimDue: (
+		input: ClaimDueNotificationDeliveryAttemptsInput
+	) => Effect.Effect<
+		readonly NotificationDeliveryAttemptRecord[],
+		PersistenceError | SqlError,
+		TenantContext
+	>;
+	/**
+	 * Updates retry scheduling fields on an existing delivery attempt.
+	 *
+	 * @param id - Delivery attempt identifier to update.
+	 * @param input - Fields to replace on the persisted attempt.
+	 * @returns The updated {@link NotificationDeliveryAttemptRecord}.
+	 * @throws {@link PersistenceError} when no record exists for `id`.
+	 * @throws {@link SqlError} on underlying database failures.
+	 */
+	readonly update: (
+		id: string,
+		input: UpdateNotificationDeliveryAttemptInput
+	) => Effect.Effect<
+		NotificationDeliveryAttemptRecord,
 		PersistenceError | SqlError,
 		TenantContext
 	>;

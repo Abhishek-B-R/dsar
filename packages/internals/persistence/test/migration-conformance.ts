@@ -173,6 +173,7 @@ export const defineMigrationConformanceTests = (
 						"idx_chat_lists_tenant_key_seq",
 						"idx_chat_queues_tenant_expiry",
 						"idx_chat_queues_tenant_thread_seq",
+						"idx_notification_attempts_tenant_due",
 						"idx_requests_tenant_due",
 						"idx_webhook_keys_primary",
 					])
@@ -189,6 +190,9 @@ export const defineMigrationConformanceTests = (
 					async (context) => {
 						const snapshot = await context.run((sql) =>
 							Effect.gen(function* migrationUpDownProgram() {
+								if (migration.id === 4) {
+									yield* migrations[0].up(sql);
+								}
 								yield* migration.up(sql);
 								const afterUp = yield* options.inspectSchema(sql);
 								yield* migration.down(sql);
@@ -223,6 +227,14 @@ export const defineMigrationConformanceTests = (
 							);
 							expect(snapshot.afterDown.tables).not.toContain(
 								"chat_state_queues"
+							);
+						}
+						if (migration.id === 4) {
+							expect(snapshot.afterUp.indexes).toContain(
+								"idx_notification_attempts_tenant_due"
+							);
+							expect(snapshot.afterDown.indexes).not.toContain(
+								"idx_notification_attempts_tenant_due"
 							);
 						}
 					}

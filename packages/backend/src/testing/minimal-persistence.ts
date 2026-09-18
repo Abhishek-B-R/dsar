@@ -125,6 +125,29 @@ const matchesNotificationAttemptFilter = (
 	return true;
 };
 
+const isDueNotificationAttempt = (
+	attempt: Record<string, unknown>,
+	input: Record<string, unknown>
+): boolean => {
+	const now = String(input.now ?? "");
+	if (typeof input.channel === "string" && attempt.channel !== input.channel) {
+		return false;
+	}
+	if (attempt.status !== "pending" && attempt.status !== "failed") {
+		return false;
+	}
+	if (
+		typeof attempt.nextAttemptAt !== "string" ||
+		attempt.nextAttemptAt > now
+	) {
+		return false;
+	}
+	if (typeof attempt.claimedUntil === "string" && attempt.claimedUntil > now) {
+		return false;
+	}
+	return true;
+};
+
 const compareNotificationAttemptsDesc = (
 	left: Record<string, unknown>,
 	right: Record<string, unknown>
@@ -183,6 +206,9 @@ export interface MinimalPersistence {
 		readonly append: (
 			input: Record<string, unknown>
 		) => Effect.Effect<Record<string, unknown>>;
+		readonly claimDue: (
+			input: Record<string, unknown>
+		) => Effect.Effect<readonly Record<string, unknown>[]>;
 		readonly count: (input?: Record<string, unknown>) => Effect.Effect<number>;
 		readonly getById: (
 			id: string
@@ -193,6 +219,13 @@ export interface MinimalPersistence {
 		readonly listByNotificationEventId: (
 			id: string
 		) => Effect.Effect<readonly Record<string, unknown>[]>;
+		readonly listDue: (
+			input: Record<string, unknown>
+		) => Effect.Effect<readonly Record<string, unknown>[]>;
+		readonly update: (
+			id: string,
+			input: Record<string, unknown>
+		) => Effect.Effect<Record<string, unknown>, Error>;
 	};
 	/** Chat runtime state used by integration helpers. */
 	readonly chatRuntimeState: {
@@ -674,6 +707,28 @@ export const makeMinimalPersistence = (): Effect.Effect<MinimalPersistence> =>
 						]);
 						return record;
 					}),
+				claimDue: (input: Record<string, unknown>) =>
+					Ref.modify(notificationAttemptsRef, (arr) => {
+						const now = String(input.now ?? "");
+						const claimUntil = String(input.claimUntil ?? now);
+						const claimed: Record<string, unknown>[] = [];
+						const next = arr.map((attempt) => {
+							if (
+								claimed.length >= boundedLimit(input.limit) ||
+								!isDueNotificationAttempt(attempt, input)
+							) {
+								return attempt;
+							}
+							const updated = {
+								...attempt,
+								claimedAt: now,
+								claimedUntil: claimUntil,
+							};
+							claimed.push(updated);
+							return updated;
+						});
+						return [claimed, next] as const;
+					}),
 				count: (input?: Record<string, unknown>) =>
 					Ref.get(notificationAttemptsRef).pipe(
 						Effect.map(
@@ -714,6 +769,55 @@ export const makeMinimalPersistence = (): Effect.Effect<MinimalPersistence> =>
 							arr.filter(
 								(a: Record<string, unknown>) => a.notificationEventId === id
 							)
+						)
+					),
+				listDue: (input: Record<string, unknown>) =>
+					Ref.get(notificationAttemptsRef).pipe(
+						Effect.map((arr) =>
+							arr
+								.filter((attempt) => isDueNotificationAttempt(attempt, input))
+								.slice(0, boundedLimit(input.limit))
+						)
+					),
+				update: (id: string, input: Record<string, unknown>) =>
+					Ref.modify(notificationAttemptsRef, (arr) => {
+						const index = arr.findIndex((attempt) => attempt.id === id);
+						const current = arr[index];
+						if (index === -1 || !current) {
+							return [undefined, arr] as const;
+						}
+						const updated = {
+							...current,
+							claimedAt:
+								input.claimedAt === undefined
+									? current.claimedAt
+									: (input.claimedAt ?? undefined),
+							claimedUntil:
+								input.claimedUntil === undefined
+									? current.claimedUntil
+									: (input.claimedUntil ?? undefined),
+							error:
+								input.error === undefined
+									? current.error
+									: (input.error ?? undefined),
+							nextAttemptAt:
+								input.nextAttemptAt === undefined
+									? current.nextAttemptAt
+									: (input.nextAttemptAt ?? undefined),
+							responseCode:
+								input.responseCode === undefined
+									? current.responseCode
+									: (input.responseCode ?? undefined),
+							status: input.status ?? current.status,
+						};
+						const next = [...arr];
+						next[index] = updated;
+						return [updated, next] as const;
+					}).pipe(
+						Effect.flatMap((updated) =>
+							updated
+								? Effect.succeed(updated)
+								: Effect.fail(new Error(`Missing ${id}`))
 						)
 					),
 			},

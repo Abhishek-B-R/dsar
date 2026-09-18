@@ -54,10 +54,13 @@ const makeMemoryPersistence = (): PersistenceService => {
 		readonly channel: string;
 		readonly destination: string;
 		readonly attempt: number;
-		readonly status: "pending" | "delivered" | "failed" | "skipped";
+		readonly status: "pending" | "delivered" | "failed" | "skipped" | "dead";
 		readonly responseCode?: number;
 		readonly error?: string;
 		readonly createdAt: string;
+		readonly nextAttemptAt?: string;
+		readonly claimedAt?: string;
+		readonly claimedUntil?: string;
 	}[] = [];
 	const clockSegments: {
 		readonly id: string;
@@ -213,6 +216,50 @@ const makeMemoryPersistence = (): PersistenceService => {
 				notificationAttempts.push(record);
 				return Effect.succeed(record);
 			},
+			claimDue: (input) => {
+				const claimed = [];
+				for (const [index, attempt] of notificationAttempts.entries()) {
+					if (input.channel && attempt.channel !== input.channel) {
+						continue;
+					}
+					if (attempt.status !== "pending" && attempt.status !== "failed") {
+						continue;
+					}
+					if (!attempt.nextAttemptAt || attempt.nextAttemptAt > input.now) {
+						continue;
+					}
+					if (attempt.claimedUntil && attempt.claimedUntil > input.now) {
+						continue;
+					}
+					if (claimed.length >= (input.limit ?? 50)) {
+						break;
+					}
+					const next = {
+						...attempt,
+						claimedAt: input.now,
+						claimedUntil: input.claimUntil,
+					};
+					notificationAttempts[index] = next;
+					claimed.push(next);
+				}
+				return Effect.succeed(claimed);
+			},
+			count: (input) =>
+				Effect.succeed(
+					notificationAttempts.filter((attempt) => {
+						if (input?.channel && attempt.channel !== input.channel) {
+							return false;
+						}
+						if (
+							input?.status &&
+							input.status.length > 0 &&
+							!input.status.includes(attempt.status)
+						) {
+							return false;
+						}
+						return true;
+					}).length
+				),
 			getById: (id: string) =>
 				Effect.fromNullishOr(
 					notificationAttempts.find((attempt) => attempt.id === id)
@@ -241,6 +288,61 @@ const makeMemoryPersistence = (): PersistenceService => {
 						(attempt) => attempt.notificationEventId === notificationEventId
 					)
 				),
+			listDue: (input) =>
+				Effect.succeed(
+					notificationAttempts
+						.filter((attempt) => {
+							if (input.channel && attempt.channel !== input.channel) {
+								return false;
+							}
+							if (attempt.status !== "pending" && attempt.status !== "failed") {
+								return false;
+							}
+							if (!attempt.nextAttemptAt || attempt.nextAttemptAt > input.now) {
+								return false;
+							}
+							if (attempt.claimedUntil && attempt.claimedUntil > input.now) {
+								return false;
+							}
+							return true;
+						})
+						.slice(0, input.limit ?? 50)
+				),
+			update: (id, input) => {
+				const index = notificationAttempts.findIndex(
+					(attempt) => attempt.id === id
+				);
+				const current = notificationAttempts[index];
+				if (index === -1 || !current) {
+					return Effect.fail(new Error(`Missing notification attempt ${id}`));
+				}
+				const next = {
+					...current,
+					claimedAt:
+						input.claimedAt === undefined
+							? current.claimedAt
+							: (input.claimedAt ?? undefined),
+					claimedUntil:
+						input.claimedUntil === undefined
+							? current.claimedUntil
+							: (input.claimedUntil ?? undefined),
+					error:
+						input.error === undefined
+							? current.error
+							: (input.error ?? undefined),
+					nextAttemptAt:
+						input.nextAttemptAt === undefined
+							? current.nextAttemptAt
+							: (input.nextAttemptAt ?? undefined),
+					responseCode:
+						input.responseCode === undefined
+							? current.responseCode
+							: (input.responseCode ?? undefined),
+					status: input.status ?? current.status,
+				};
+				notificationAttempts[index] = next;
+				return Effect.succeed(next);
+			},
 		},
 		notificationEvents: {
 			append: (input) => {

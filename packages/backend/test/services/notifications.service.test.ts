@@ -14,10 +14,15 @@ import type {
 } from "@dsar/persistence";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { pipe } from "effect/Function";
+import * as Fiber from "effect/Fiber";
+import { TestClock } from "effect/testing";
 
 import { makeAdapterRegistry } from "../../src/adapters";
 import { deriveLifecycleNotificationDrafts } from "../../src/events/contracts";
+import {
+	processDueWebhookDeliveries,
+	runWebhookRetryWorker,
+} from "../../src/services/notifications/retry-worker";
 import {
 	emitNotificationEvent,
 	makeNotificationDraft,
@@ -57,10 +62,13 @@ const makeMemoryPersistence = (): {
 		readonly channel: string;
 		readonly destination: string;
 		readonly attempt: number;
-		readonly status: "pending" | "delivered" | "failed" | "skipped";
+		readonly status: "pending" | "delivered" | "failed" | "skipped" | "dead";
 		readonly responseCode?: number;
 		readonly error?: string;
 		readonly createdAt: string;
+		readonly nextAttemptAt?: string;
+		readonly claimedAt?: string;
+		readonly claimedUntil?: string;
 	}[];
 } => {
 	const notificationEvents: {
@@ -85,10 +93,13 @@ const makeMemoryPersistence = (): {
 		readonly channel: string;
 		readonly destination: string;
 		readonly attempt: number;
-		readonly status: "pending" | "delivered" | "failed" | "skipped";
+		readonly status: "pending" | "delivered" | "failed" | "skipped" | "dead";
 		readonly responseCode?: number;
 		readonly error?: string;
 		readonly createdAt: string;
+		readonly nextAttemptAt?: string;
+		readonly claimedAt?: string;
+		readonly claimedUntil?: string;
 	}[] = [];
 
 	const failNotImplemented = (name: string) =>
@@ -131,6 +142,50 @@ const makeMemoryPersistence = (): {
 					attempts.push(record);
 					return Effect.succeed(record);
 				},
+				claimDue: (input) => {
+					const claimed = [];
+					for (const [index, attempt] of attempts.entries()) {
+						if (input.channel && attempt.channel !== input.channel) {
+							continue;
+						}
+						if (attempt.status !== "pending" && attempt.status !== "failed") {
+							continue;
+						}
+						if (!attempt.nextAttemptAt || attempt.nextAttemptAt > input.now) {
+							continue;
+						}
+						if (attempt.claimedUntil && attempt.claimedUntil > input.now) {
+							continue;
+						}
+						if (claimed.length >= (input.limit ?? 50)) {
+							break;
+						}
+						const next = {
+							...attempt,
+							claimedAt: input.now,
+							claimedUntil: input.claimUntil,
+						};
+						attempts[index] = next;
+						claimed.push(next);
+					}
+					return Effect.succeed(claimed);
+				},
+				count: (input) =>
+					Effect.succeed(
+						attempts.filter((attempt) => {
+							if (input?.channel && attempt.channel !== input.channel) {
+								return false;
+							}
+							if (
+								input?.status &&
+								input.status.length > 0 &&
+								!input.status.includes(attempt.status)
+							) {
+								return false;
+							}
+							return true;
+						}).length
+					),
 				getById: (id: string) =>
 					Effect.fromNullishOr(
 						attempts.find((attempt) => attempt.id === id)
@@ -161,6 +216,67 @@ const makeMemoryPersistence = (): {
 							(attempt) => attempt.notificationEventId === notificationEventId
 						)
 					),
+				listDue: (input) =>
+					Effect.succeed(
+						attempts
+							.filter((attempt) => {
+								if (input.channel && attempt.channel !== input.channel) {
+									return false;
+								}
+								if (
+									attempt.status !== "pending" &&
+									attempt.status !== "failed"
+								) {
+									return false;
+								}
+								if (
+									!attempt.nextAttemptAt ||
+									attempt.nextAttemptAt > input.now
+								) {
+									return false;
+								}
+								if (attempt.claimedUntil && attempt.claimedUntil > input.now) {
+									return false;
+								}
+								return true;
+							})
+							.slice(0, input.limit ?? 50)
+					),
+				update: (id, input) => {
+					const index = attempts.findIndex((attempt) => attempt.id === id);
+					const current = attempts[index];
+					if (index === -1 || !current) {
+						return Effect.fail(
+							new Error(`missing notification attempt in test: ${id}`)
+						);
+					}
+					const next = {
+						...current,
+						claimedAt:
+							input.claimedAt === undefined
+								? current.claimedAt
+								: (input.claimedAt ?? undefined),
+						claimedUntil:
+							input.claimedUntil === undefined
+								? current.claimedUntil
+								: (input.claimedUntil ?? undefined),
+						error:
+							input.error === undefined
+								? current.error
+								: (input.error ?? undefined),
+						nextAttemptAt:
+							input.nextAttemptAt === undefined
+								? current.nextAttemptAt
+								: (input.nextAttemptAt ?? undefined),
+						responseCode:
+							input.responseCode === undefined
+								? current.responseCode
+								: (input.responseCode ?? undefined),
+						status: input.status ?? current.status,
+					};
+					attempts[index] = next;
+					return Effect.succeed(next);
+				},
 			},
 			notificationEvents: {
 				append: (input: CreateNotificationEventInput) => {
@@ -475,115 +591,101 @@ describe("notification retry/backoff behavior", () => {
 		).toStrictEqual(["delivered"]);
 	});
 
-	it("retries failed webhook dispatches using configured backoff", async () => {
-		const { vi } = await import("vitest");
-		vi.useFakeTimers();
-		try {
+	it.effect(
+		"retries a flaky webhook receiver on the third durable attempt",
+		() =>
+			Effect.gen(function* retryFlakyWebhookReceiver() {
+				const memory = makeMemoryPersistence();
+				let callCount = 0;
+				const services = makeServices({
+					dispatch: {
+						send: () =>
+							Effect.sync(() => {
+								callCount += 1;
+								if (callCount < 3) {
+									return {
+										error: "temporary failure",
+										status: "failed" as const,
+									};
+								}
+								return {
+									responseCode: 202,
+									status: "delivered" as const,
+								};
+							}),
+					},
+					persistence: memory.persistence,
+					retryDelayMs: 0,
+					retryMaxAttempts: 3,
+				});
+				const result = yield* emitNotificationEvent({
+					draft: makeNotificationDraft({
+						eventType: "clock_due_changed",
+						payload: { dueAt: "2026-03-01T00:00:00.000Z" },
+						requestId: "req-1",
+					}),
+					idempotencyKey: "idem-1",
+					tenantId: "tenant-default",
+				}).pipe(Effect.provideService(RuntimeServicesTag, services));
+				expect(result.status).toBe("generated");
+				expect(callCount).toBe(1);
+				const worker = yield* runWebhookRetryWorker.pipe(
+					Effect.provideService(RuntimeServicesTag, services),
+					Effect.forkChild
+				);
+				yield* TestClock.adjust("1 minute");
+				expect(callCount).toBe(2);
+				yield* TestClock.adjust("5 minutes");
+				expect(callCount).toBe(3);
+				yield* Fiber.interrupt(worker);
+				expect(
+					memory
+						.getAttempts()
+						.filter((attempt) => attempt.channel === "webhook")
+						.map((attempt) => attempt.status)
+				).toStrictEqual(["failed", "failed", "delivered"]);
+			})
+	);
+
+	it.effect("marks webhook delivery dead after max durable attempts", () =>
+		Effect.gen(function* stopAfterMaxDurableAttempts() {
 			const memory = makeMemoryPersistence();
-			const retryDelayMs = 1000;
 			let callCount = 0;
-			const attemptTimes: number[] = [];
-			const outcomes = [
-				{ error: "temporary failure", status: "failed" as const },
-				{ error: "temporary failure", status: "failed" as const },
-				{ responseCode: 202, status: "delivered" as const },
-			] as const;
-			const dispatch = {
-				send: () =>
-					Effect.sync(() => {
-						attemptTimes.push(Date.now());
-						callCount += 1;
-						return outcomes[callCount - 1] as (typeof outcomes)[number];
-					}),
-			};
 			const services = makeServices({
-				dispatch,
-				persistence: memory.persistence,
-				retryDelayMs,
-				retryMaxAttempts: 3,
-			});
-			const notificationPromise = Effect.runPromise(
-				pipe(
-					emitNotificationEvent({
-						draft: makeNotificationDraft({
-							eventType: "clock_due_changed",
-							payload: { dueAt: "2026-03-01T00:00:00.000Z" },
-							requestId: "req-1",
+				dispatch: {
+					send: () =>
+						Effect.sync(() => {
+							callCount += 1;
+							return { error: "still failing", status: "failed" as const };
 						}),
-						idempotencyKey: "idem-1",
-						tenantId: "tenant-default",
-					}),
-					Effect.provideService(RuntimeServicesTag, services)
-				)
+				},
+				persistence: memory.persistence,
+				retryDelayMs: 1,
+				retryMaxAttempts: 2,
+			});
+			yield* emitNotificationEvent({
+				draft: makeNotificationDraft({
+					eventType: "clock_segment_opened",
+					payload: { reason: "verification_request" },
+					requestId: "req-2",
+				}),
+				idempotencyKey: "idem-2",
+				tenantId: "tenant-default",
+			}).pipe(Effect.provideService(RuntimeServicesTag, services));
+			expect(callCount).toBe(1);
+			yield* TestClock.adjust("1 minute");
+			yield* processDueWebhookDeliveries().pipe(
+				Effect.provideService(RuntimeServicesTag, services)
 			);
-			await vi.advanceTimersByTimeAsync(1);
-			expect(callCount).toBe(1);
-			await vi.advanceTimersByTimeAsync(998);
-			expect(callCount).toBe(1);
-			await vi.advanceTimersByTimeAsync(1);
 			expect(callCount).toBe(2);
-			await vi.advanceTimersByTimeAsync(1000);
-			const result = await notificationPromise;
-			expect(result.status).toBe("generated");
-			expect(callCount).toBe(3);
-			expect(attemptTimes).toHaveLength(3);
-			expect(typeof attemptTimes[0]).toBe("number");
-			expect(typeof attemptTimes[1]).toBe("number");
-			const firstAttemptAt = attemptTimes[0] as number;
-			const secondAttemptAt = attemptTimes[1] as number;
-			expect(secondAttemptAt - firstAttemptAt).toBeGreaterThanOrEqual(
-				retryDelayMs
-			);
 			expect(
 				memory
 					.getAttempts()
 					.filter((attempt) => attempt.channel === "webhook")
 					.map((attempt) => attempt.status)
-			).toStrictEqual(["failed", "failed", "delivered"]);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("stops retrying after max attempts", async () => {
-		const memory = makeMemoryPersistence();
-		let callCount = 0;
-		const dispatch = {
-			send: () =>
-				Effect.sync(() => {
-					callCount += 1;
-					return { error: "still failing", status: "failed" as const };
-				}),
-		};
-		const services = makeServices({
-			dispatch,
-			persistence: memory.persistence,
-			retryDelayMs: 1,
-			retryMaxAttempts: 2,
-		});
-
-		await Effect.runPromise(
-			pipe(
-				emitNotificationEvent({
-					draft: makeNotificationDraft({
-						eventType: "clock_segment_opened",
-						payload: { reason: "verification_request" },
-						requestId: "req-2",
-					}),
-					idempotencyKey: "idem-2",
-					tenantId: "tenant-default",
-				}),
-				Effect.provideService(RuntimeServicesTag, services)
-			)
-		);
-		expect(callCount).toBe(2);
-		expect(
-			memory
-				.getAttempts()
-				.filter((attempt) => attempt.channel === "webhook")
-				.map((attempt) => attempt.status)
-		).toStrictEqual(["failed", "failed"]);
-	});
+			).toStrictEqual(["failed", "dead"]);
+		})
+	);
 
 	it("sends built-in email when webhook is disabled", async () => {
 		const memory = makeMemoryPersistence();

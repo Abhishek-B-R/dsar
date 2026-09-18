@@ -16,11 +16,13 @@ import type {
 	AuditEventsRepository,
 	ChatRuntimeStateRepository,
 	ClockSegmentsRepository,
+	ClaimDueNotificationDeliveryAttemptsInput,
 	CreateClockSegmentInput,
 	CreateNotificationDeliveryAttemptInput,
 	CreateNotificationEventInput,
 	FulfillmentArtifactsRepository,
 	ListAuditEventsInput,
+	ListDueNotificationDeliveryAttemptsInput,
 	ListNotificationDeliveryAttemptsInput,
 	ListRequestsBySubjectInput,
 	NotificationDeliveryAttemptsRepository,
@@ -28,6 +30,7 @@ import type {
 	PaginationInput,
 	PolicyAssignmentsRepository,
 	RequestsRepository,
+	UpdateNotificationDeliveryAttemptInput,
 	RequestTimelineRepository,
 	RetentionPoliciesRepository,
 	VerificationEvidenceRepository,
@@ -82,6 +85,23 @@ export type {
 } from "./persistence/migrations";
 export type { WebhookSigningSecretEncryptionOptions } from "./persistence/webhook-secret-encryption";
 
+interface NotificationDeliveryAttemptSqlRow {
+	readonly id: string;
+	readonly tenant_id: string;
+	readonly notification_event_id: string;
+	readonly request_id: string;
+	readonly channel: string;
+	readonly destination: string;
+	readonly attempt: number;
+	readonly status: string;
+	readonly response_code: number | null;
+	readonly error_text: string | null;
+	readonly created_at: string;
+	readonly next_attempt_at: string | null;
+	readonly claimed_at: string | null;
+	readonly claimed_until: string | null;
+}
+
 interface WebhookEndpointSqlRow {
 	readonly id: string;
 	readonly tenant_id: string;
@@ -105,6 +125,25 @@ interface WebhookSigningKeySqlRow {
 	readonly expires_at: string | null;
 	readonly created_at: string;
 }
+
+const dueNotificationAttemptClauses = (
+	sql: Sql,
+	tenantId: string,
+	now: string,
+	channel?: string
+): (SqlFragment | SqlStatement<unknown>)[] => {
+	const clauses: (SqlFragment | SqlStatement<unknown>)[] = [
+		sql`tenant_id = ${tenantId}`,
+		sql.in("status", ["pending", "failed"]),
+		sql`next_attempt_at IS NOT NULL`,
+		sql`next_attempt_at <= ${now}`,
+		sql`(claimed_until IS NULL OR claimed_until <= ${now})`,
+	];
+	if (channel) {
+		clauses.push(sql`channel = ${channel}`);
+	}
+	return clauses;
+};
 
 const isUniqueConstraintSqlError = (error: unknown): error is SqlError => {
 	if (!(error instanceof SqlError)) {
@@ -978,29 +1017,21 @@ const makePersistence = (
 						yield* sql`INSERT INTO notification_delivery_attempts ${sql.insert({
 							attempt: input.attempt,
 							channel: input.channel,
+							claimed_at: input.claimedAt ?? null,
+							claimed_until: input.claimedUntil ?? null,
 							created_at: input.createdAt,
 							destination: input.destination,
 							error_text: input.error ?? null,
 							id: input.id,
+							next_attempt_at: input.nextAttemptAt ?? null,
 							notification_event_id: input.notificationEventId,
 							request_id: input.requestId,
 							response_code: input.responseCode ?? null,
 							status: input.status,
 							tenant_id: tenantId,
 						})}`;
-						const rows = yield* sql<{
-							readonly id: string;
-							readonly tenant_id: string;
-							readonly notification_event_id: string;
-							readonly request_id: string;
-							readonly channel: string;
-							readonly destination: string;
-							readonly attempt: number;
-							readonly status: string;
-							readonly response_code: number | null;
-							readonly error_text: string | null;
-							readonly created_at: string;
-						}>`SELECT * FROM notification_delivery_attempts
+						const rows =
+							yield* sql<NotificationDeliveryAttemptSqlRow>`SELECT * FROM notification_delivery_attempts
 					WHERE tenant_id = ${tenantId} AND id = ${input.id}
 					LIMIT 1`;
 						const row = yield* findRequired(
@@ -1009,6 +1040,47 @@ const makePersistence = (
 							input.id
 						);
 						return yield* mapNotificationDeliveryAttemptRecordEffect(row);
+					}),
+				claimDue: (input: ClaimDueNotificationDeliveryAttemptsInput) =>
+					Effect.gen(function* claimDueNotificationDeliveryAttempts() {
+						const tenantId = yield* requireTenantId;
+						const limit = limitWithFallback(input.limit);
+						return yield* sql.withTransaction(
+							Effect.gen(function* claimDueNotificationDeliveryAttemptsTx() {
+								const clauses = dueNotificationAttemptClauses(
+									sql,
+									tenantId,
+									input.now,
+									input.channel
+								);
+								const candidates =
+									yield* sql<NotificationDeliveryAttemptSqlRow>`SELECT * FROM notification_delivery_attempts
+								WHERE ${sql.and(clauses)}
+								ORDER BY next_attempt_at ASC, id ASC
+								LIMIT ${limit}`;
+								const claimed: NotificationDeliveryAttemptSqlRow[] = [];
+								for (const candidate of candidates) {
+									const updated =
+										yield* sql<NotificationDeliveryAttemptSqlRow>`UPDATE notification_delivery_attempts SET ${sql.update(
+											{
+												claimed_at: input.now,
+												claimed_until: input.claimUntil,
+											}
+										)}
+									WHERE tenant_id = ${tenantId}
+										AND id = ${candidate.id}
+										AND (claimed_until IS NULL OR claimed_until <= ${input.now})
+									RETURNING *`;
+									if (updated[0]) {
+										claimed.push(updated[0]);
+									}
+								}
+								return yield* Effect.forEach(
+									claimed,
+									mapNotificationDeliveryAttemptRecordEffect
+								);
+							})
+						);
 					}),
 				count: (input?: ListNotificationDeliveryAttemptsInput) =>
 					Effect.gen(function* countNotificationDeliveryAttempts() {
@@ -1041,19 +1113,8 @@ const makePersistence = (
 				getById: (id) =>
 					Effect.gen(function* getNotificationDeliveryAttemptById() {
 						const tenantId = yield* requireTenantId;
-						const rows = yield* sql<{
-							readonly id: string;
-							readonly tenant_id: string;
-							readonly notification_event_id: string;
-							readonly request_id: string;
-							readonly channel: string;
-							readonly destination: string;
-							readonly attempt: number;
-							readonly status: string;
-							readonly response_code: number | null;
-							readonly error_text: string | null;
-							readonly created_at: string;
-						}>`SELECT * FROM notification_delivery_attempts
+						const rows =
+							yield* sql<NotificationDeliveryAttemptSqlRow>`SELECT * FROM notification_delivery_attempts
 					WHERE tenant_id = ${tenantId} AND id = ${id}
 					LIMIT 1`;
 						const row = yield* findRequired(
@@ -1087,19 +1148,8 @@ const makePersistence = (
 						if (input?.createdBefore) {
 							clauses.push(sql`created_at < ${input.createdBefore}`);
 						}
-						const rows = yield* sql<{
-							readonly id: string;
-							readonly tenant_id: string;
-							readonly notification_event_id: string;
-							readonly request_id: string;
-							readonly channel: string;
-							readonly destination: string;
-							readonly attempt: number;
-							readonly status: string;
-							readonly response_code: number | null;
-							readonly error_text: string | null;
-							readonly created_at: string;
-						}>`SELECT * FROM notification_delivery_attempts
+						const rows =
+							yield* sql<NotificationDeliveryAttemptSqlRow>`SELECT * FROM notification_delivery_attempts
 					WHERE ${sql.and(clauses)}
 					ORDER BY created_at DESC, id DESC
 					LIMIT ${limit} OFFSET ${offset}`;
@@ -1111,25 +1161,70 @@ const makePersistence = (
 				listByNotificationEventId: (notificationEventId) =>
 					Effect.gen(function* listNotificationDeliveryAttemptsByEventId() {
 						const tenantId = yield* requireTenantId;
-						const rows = yield* sql<{
-							readonly id: string;
-							readonly tenant_id: string;
-							readonly notification_event_id: string;
-							readonly request_id: string;
-							readonly channel: string;
-							readonly destination: string;
-							readonly attempt: number;
-							readonly status: string;
-							readonly response_code: number | null;
-							readonly error_text: string | null;
-							readonly created_at: string;
-						}>`SELECT * FROM notification_delivery_attempts
+						const rows =
+							yield* sql<NotificationDeliveryAttemptSqlRow>`SELECT * FROM notification_delivery_attempts
 					WHERE tenant_id = ${tenantId} AND notification_event_id = ${notificationEventId}
 					ORDER BY attempt ASC, created_at ASC`;
 						return yield* Effect.forEach(
 							rows,
 							mapNotificationDeliveryAttemptRecordEffect
 						);
+					}),
+				listDue: (input: ListDueNotificationDeliveryAttemptsInput) =>
+					Effect.gen(function* listDueNotificationDeliveryAttempts() {
+						const tenantId = yield* requireTenantId;
+						const limit = limitWithFallback(input.limit);
+						const clauses = dueNotificationAttemptClauses(
+							sql,
+							tenantId,
+							input.now,
+							input.channel
+						);
+						const rows =
+							yield* sql<NotificationDeliveryAttemptSqlRow>`SELECT * FROM notification_delivery_attempts
+					WHERE ${sql.and(clauses)}
+					ORDER BY next_attempt_at ASC, id ASC
+					LIMIT ${limit}`;
+						return yield* Effect.forEach(
+							rows,
+							mapNotificationDeliveryAttemptRecordEffect
+						);
+					}),
+				update: (id: string, input: UpdateNotificationDeliveryAttemptInput) =>
+					Effect.gen(function* updateNotificationDeliveryAttempt() {
+						const tenantId = yield* requireTenantId;
+						const updateFields: Record<string, number | string | null> = {};
+						if (input.status !== undefined) {
+							updateFields.status = input.status;
+						}
+						if (input.responseCode !== undefined) {
+							updateFields.response_code = input.responseCode;
+						}
+						if (input.error !== undefined) {
+							updateFields.error_text = input.error;
+						}
+						if (input.nextAttemptAt !== undefined) {
+							updateFields.next_attempt_at = input.nextAttemptAt;
+						}
+						if (input.claimedAt !== undefined) {
+							updateFields.claimed_at = input.claimedAt;
+						}
+						if (input.claimedUntil !== undefined) {
+							updateFields.claimed_until = input.claimedUntil;
+						}
+						if (Object.keys(updateFields).length === 0) {
+							return yield* notificationDeliveryAttempts.getById(id);
+						}
+						const rows =
+							yield* sql<NotificationDeliveryAttemptSqlRow>`UPDATE notification_delivery_attempts SET ${sql.update(
+								updateFields
+							)} WHERE tenant_id = ${tenantId} AND id = ${id} RETURNING *`;
+						const row = yield* findRequired(
+							rows[0],
+							"notification_delivery_attempts",
+							id
+						);
+						return yield* mapNotificationDeliveryAttemptRecordEffect(row);
 					}),
 			};
 

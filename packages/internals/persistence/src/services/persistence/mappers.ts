@@ -363,6 +363,9 @@ export const mapNotificationDeliveryAttemptRecordEffect = (row: {
 	readonly response_code: number | null;
 	readonly error_text: string | null;
 	readonly created_at: string;
+	readonly next_attempt_at?: string | null;
+	readonly claimed_at?: string | null;
+	readonly claimed_until?: string | null;
 }): Effect.Effect<
 	NotificationDeliveryAttemptRecord,
 	PersistenceInvalidRecordError
@@ -370,10 +373,13 @@ export const mapNotificationDeliveryAttemptRecordEffect = (row: {
 	Effect.map(parseNotificationDeliveryStatus(row.status), (status) => ({
 		attempt: row.attempt,
 		channel: row.channel,
+		claimedAt: row.claimed_at ?? undefined,
+		claimedUntil: row.claimed_until ?? undefined,
 		createdAt: row.created_at,
 		destination: row.destination,
 		error: row.error_text ?? undefined,
 		id: row.id,
+		nextAttemptAt: row.next_attempt_at ?? undefined,
 		notificationEventId: row.notification_event_id,
 		requestId: row.request_id,
 		responseCode: row.response_code ?? undefined,

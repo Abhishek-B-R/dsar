@@ -497,6 +497,198 @@ describe(Persistence, () => {
 		});
 	});
 
+	it("claims due notification attempts only for the current tenant", async () => {
+		const dbPath = sqliteFile("notification-retry-claim");
+
+		await runForTenant(
+			dbPath,
+			"tenant-a",
+			Effect.gen(function* seedTenantADueAttempt() {
+				const persistence = yield* Effect.service(Persistence);
+				yield* persistence.requests.create({
+					...baseRequest,
+					id: "req-retry-a",
+				});
+				yield* persistence.notificationEvents.append({
+					correlationId: "corr-retry-a",
+					createdAt: "2026-01-01T00:00:00.000Z",
+					eventType: "request_captured",
+					id: "ne-retry-a",
+					idempotencyKey: "idem-retry-a",
+					locale: "en-GB",
+					payload: { requestId: "req-retry-a" },
+					policyVersion: "uk-v1",
+					requestId: "req-retry-a",
+				});
+				yield* persistence.notificationDeliveryAttempts.append({
+					attempt: 1,
+					channel: "webhook",
+					createdAt: "2026-01-01T00:00:01.000Z",
+					destination: "https://tenant-a.example/webhook",
+					id: "nda-retry-a",
+					nextAttemptAt: "2026-01-01T00:01:00.000Z",
+					notificationEventId: "ne-retry-a",
+					requestId: "req-retry-a",
+					status: "pending",
+				});
+			})
+		);
+
+		await runForTenant(
+			dbPath,
+			"tenant-b",
+			Effect.gen(function* seedTenantBDueAttempt() {
+				const persistence = yield* Effect.service(Persistence);
+				yield* persistence.requests.create({
+					...baseRequest,
+					id: "req-retry-b",
+				});
+				yield* persistence.notificationEvents.append({
+					correlationId: "corr-retry-b",
+					createdAt: "2026-01-01T00:00:00.000Z",
+					eventType: "request_captured",
+					id: "ne-retry-b",
+					idempotencyKey: "idem-retry-b",
+					locale: "en-GB",
+					payload: { requestId: "req-retry-b" },
+					policyVersion: "uk-v1",
+					requestId: "req-retry-b",
+				});
+				yield* persistence.notificationDeliveryAttempts.append({
+					attempt: 1,
+					channel: "webhook",
+					createdAt: "2026-01-01T00:00:01.000Z",
+					destination: "https://tenant-b.example/webhook",
+					id: "nda-retry-b",
+					nextAttemptAt: "2026-01-01T00:01:00.000Z",
+					notificationEventId: "ne-retry-b",
+					requestId: "req-retry-b",
+					status: "failed",
+				});
+			})
+		);
+
+		const claimedA = await runForTenant(
+			dbPath,
+			"tenant-a",
+			Effect.gen(function* claimTenantA() {
+				const persistence = yield* Effect.service(Persistence);
+				return yield* persistence.notificationDeliveryAttempts.claimDue({
+					channel: "webhook",
+					claimUntil: "2026-01-01T00:02:00.000Z",
+					now: "2026-01-01T00:01:00.000Z",
+				});
+			})
+		);
+		const listedB = await runForTenant(
+			dbPath,
+			"tenant-b",
+			Effect.gen(function* listTenantBDue() {
+				const persistence = yield* Effect.service(Persistence);
+				return yield* persistence.notificationDeliveryAttempts.listDue({
+					channel: "webhook",
+					now: "2026-01-01T00:01:00.000Z",
+				});
+			})
+		);
+
+		expect(claimedA.map((attempt) => attempt.id)).toStrictEqual([
+			"nda-retry-a",
+		]);
+		expect(claimedA[0]?.claimedUntil).toBe("2026-01-01T00:02:00.000Z");
+		expect(listedB.map((attempt) => attempt.id)).toStrictEqual(["nda-retry-b"]);
+	});
+
+	it.effect(
+		"fails closed when claiming due attempts without tenant scope",
+		() =>
+			Effect.gen(function* claimDueWithoutTenant() {
+				const dbPath = sqliteFile("notification-retry-missing-tenant");
+				const program = Effect.gen(function* claimWithoutTenant() {
+					const persistence = yield* Effect.service(Persistence);
+					return yield* persistence.notificationDeliveryAttempts.claimDue({
+						claimUntil: "2026-01-01T00:02:00.000Z",
+						now: "2026-01-01T00:01:00.000Z",
+					});
+				}).pipe(
+					Effect.provide(makeSqlitePersistenceLayer({ filename: dbPath }))
+				);
+				const result = yield* Effect.result(program);
+				expect(result._tag).toBe("Failure");
+				expect((result as { readonly failure: unknown }).failure).toMatchObject(
+					{
+						_tag: "MissingTenantScopeError",
+					}
+				);
+			})
+	);
+
+	it("updates attempt retry state and ignores undued failed rows", async () => {
+		const dbPath = sqliteFile("notification-retry-update");
+
+		const result = await runForTenant(
+			dbPath,
+			"tenant-a",
+			Effect.gen(function* updateAndListDueAttempts() {
+				const persistence = yield* Effect.service(Persistence);
+				yield* persistence.requests.create({
+					...baseRequest,
+					id: "req-retry-update",
+				});
+				yield* persistence.notificationEvents.append({
+					correlationId: "corr-retry-update",
+					createdAt: "2026-01-01T00:00:00.000Z",
+					eventType: "request_captured",
+					id: "ne-retry-update",
+					idempotencyKey: "idem-retry-update",
+					locale: "en-GB",
+					payload: { requestId: "req-retry-update" },
+					policyVersion: "uk-v1",
+					requestId: "req-retry-update",
+				});
+				yield* persistence.notificationDeliveryAttempts.append({
+					attempt: 1,
+					channel: "webhook",
+					createdAt: "2026-01-01T00:00:01.000Z",
+					destination: "https://tenant.example/webhook",
+					id: "nda-due",
+					nextAttemptAt: "2026-01-01T00:01:00.000Z",
+					notificationEventId: "ne-retry-update",
+					requestId: "req-retry-update",
+					status: "pending",
+				});
+				yield* persistence.notificationDeliveryAttempts.append({
+					attempt: 1,
+					channel: "webhook",
+					createdAt: "2026-01-01T00:00:01.000Z",
+					destination: "https://tenant.example/webhook",
+					id: "nda-historical-failed",
+					notificationEventId: "ne-retry-update",
+					requestId: "req-retry-update",
+					status: "failed",
+				});
+				const dead = yield* persistence.notificationDeliveryAttempts.update(
+					"nda-due",
+					{
+						claimedAt: null,
+						claimedUntil: null,
+						error: "receiver unavailable",
+						nextAttemptAt: null,
+						status: "dead",
+					}
+				);
+				const due = yield* persistence.notificationDeliveryAttempts.listDue({
+					now: "2026-01-01T00:02:00.000Z",
+				});
+				return { dead, due };
+			})
+		);
+
+		expect(result.dead.status).toBe("dead");
+		expect(result.dead.nextAttemptAt).toBeUndefined();
+		expect(result.due).toHaveLength(0);
+	});
+
 	it("persists webhook endpoint signing-key rotation with tenant isolation", async () => {
 		const dbPath = sqliteFile("webhook-rotation");
 		const seeded = await runForTenant(

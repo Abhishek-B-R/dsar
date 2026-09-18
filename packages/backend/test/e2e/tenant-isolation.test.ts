@@ -413,6 +413,39 @@ const makeTenantScopedMemoryPersistence = (): PersistenceService => {
 					notificationAttempts.push(record);
 					return record;
 				}),
+			claimDue: (input) =>
+				Effect.gen(function* claimDueNotificationAttempts() {
+					const tenantId = yield* currentTenantId;
+					const claimed: NotificationDeliveryAttemptRecord[] = [];
+					for (const [index, attempt] of notificationAttempts.entries()) {
+						if (attempt.tenantId !== tenantId) {
+							continue;
+						}
+						if (input.channel && attempt.channel !== input.channel) {
+							continue;
+						}
+						if (attempt.status !== "pending" && attempt.status !== "failed") {
+							continue;
+						}
+						if (!attempt.nextAttemptAt || attempt.nextAttemptAt > input.now) {
+							continue;
+						}
+						if (attempt.claimedUntil && attempt.claimedUntil > input.now) {
+							continue;
+						}
+						if (claimed.length >= (input.limit ?? 50)) {
+							break;
+						}
+						const next: NotificationDeliveryAttemptRecord = {
+							...attempt,
+							claimedAt: input.now,
+							claimedUntil: input.claimUntil,
+						};
+						notificationAttempts[index] = next;
+						claimed.push(next);
+					}
+					return claimed;
+				}),
 			count: (input) =>
 				Effect.gen(function* countNotificationAttempts() {
 					const tenantId = yield* currentTenantId;
@@ -462,6 +495,72 @@ const makeTenantScopedMemoryPersistence = (): PersistenceService => {
 							attempt.tenantId === tenantId &&
 							attempt.notificationEventId === notificationEventId
 					);
+				}),
+			listDue: (input) =>
+				Effect.gen(function* listDueNotificationAttempts() {
+					const tenantId = yield* currentTenantId;
+					return notificationAttempts
+						.filter((attempt) => {
+							if (attempt.tenantId !== tenantId) {
+								return false;
+							}
+							if (input.channel && attempt.channel !== input.channel) {
+								return false;
+							}
+							if (attempt.status !== "pending" && attempt.status !== "failed") {
+								return false;
+							}
+							if (!attempt.nextAttemptAt || attempt.nextAttemptAt > input.now) {
+								return false;
+							}
+							if (attempt.claimedUntil && attempt.claimedUntil > input.now) {
+								return false;
+							}
+							return true;
+						})
+						.slice(0, input.limit ?? 50);
+				}),
+			update: (id, input) =>
+				Effect.gen(function* updateNotificationAttempt() {
+					const tenantId = yield* currentTenantId;
+					const index = notificationAttempts.findIndex(
+						(attempt) => attempt.tenantId === tenantId && attempt.id === id
+					);
+					const current = notificationAttempts[index];
+					if (index === -1 || !current) {
+						return yield* Effect.fail(
+							new PersistenceEntityNotFoundError({
+								entity: "notification_delivery_attempts",
+								id,
+							})
+						);
+					}
+					const next: NotificationDeliveryAttemptRecord = {
+						...current,
+						claimedAt:
+							input.claimedAt === undefined
+								? current.claimedAt
+								: (input.claimedAt ?? undefined),
+						claimedUntil:
+							input.claimedUntil === undefined
+								? current.claimedUntil
+								: (input.claimedUntil ?? undefined),
+						error:
+							input.error === undefined
+								? current.error
+								: (input.error ?? undefined),
+						nextAttemptAt:
+							input.nextAttemptAt === undefined
+								? current.nextAttemptAt
+								: (input.nextAttemptAt ?? undefined),
+						responseCode:
+							input.responseCode === undefined
+								? current.responseCode
+								: (input.responseCode ?? undefined),
+						status: input.status ?? current.status,
+					};
+					notificationAttempts[index] = next;
+					return next;
 				}),
 		},
 		notificationEvents: {

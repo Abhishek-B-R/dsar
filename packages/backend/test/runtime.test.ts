@@ -176,7 +176,7 @@ const seedWebhookDispatch = async (
 		readonly eventId: string;
 		readonly id: string;
 		readonly requestId?: string;
-		readonly status?: "pending" | "delivered" | "failed" | "skipped";
+		readonly status?: "pending" | "delivered" | "failed" | "skipped" | "dead";
 	}
 ): Promise<void> => {
 	const requestId = input.requestId ?? `req-${input.id}`;
