@@ -244,28 +244,62 @@ const start = async (): Promise<void> => {
 		return Response.json({ deleted: erased.deleted, email: found.email });
 	};
 
-	const handleDemo = async (request: Request): Promise<Response | null> => {
+	const handleExport = (email: string): Response => {
+		const exported = demoApp.exportByEmail(email);
+		if (exported.user === null) {
+			return Response.json({ reason: "not_found" }, { status: 404 });
+		}
+		return Response.json(exported);
+	};
+
+	const handleCorrect = async (request: Request): Promise<Response> => {
+		const body: unknown = await request.json().catch(() => null);
+		if (body === null || typeof body !== "object" || !("email" in body)) {
+			return Response.json({ reason: "no_email" }, { status: 400 });
+		}
+		const email = typeof body.email === "string" ? body.email : "";
+		const name =
+			"name" in body && typeof body.name === "string" ? body.name : undefined;
+		const plan =
+			"plan" in body && typeof body.plan === "string" ? body.plan : undefined;
+		const updated = demoApp.correctByEmail({ email, name, plan });
+		if (updated === null) {
+			return Response.json({ reason: "not_found" }, { status: 404 });
+		}
+		return Response.json({ user: updated });
+	};
+
+	const handleErase = async (request: Request): Promise<Response> => {
+		const email = await emailFromJsonBody(request);
+		if (email.trim().length === 0) {
+			return Response.json({ deleted: 0, reason: "no_email" }, { status: 400 });
+		}
+		const erased = demoApp.eraseByEmail(email);
+		return Response.json({ deleted: erased.deleted, email });
+	};
+
+	const handleDemo = (request: Request): Promise<Response | null> => {
 		const url = new URL(request.url);
 		if (url.pathname === demoPeoplePath && request.method === "GET") {
-			return Response.json(
-				demoApp.lookupByEmail(url.searchParams.get("email") ?? "")
+			return Promise.resolve(
+				Response.json(
+					demoApp.lookupByEmail(url.searchParams.get("email") ?? "")
+				)
 			);
 		}
+		if (url.pathname === "/demo/export" && request.method === "GET") {
+			return Promise.resolve(handleExport(url.searchParams.get("email") ?? ""));
+		}
+		if (url.pathname === "/demo/correct" && request.method === "POST") {
+			return handleCorrect(request);
+		}
 		if (url.pathname === "/demo/erase" && request.method === "POST") {
-			const email = await emailFromJsonBody(request);
-			if (email.trim().length === 0) {
-				return Response.json(
-					{ deleted: 0, reason: "no_email" },
-					{ status: 400 }
-				);
-			}
-			const erased = demoApp.eraseByEmail(email);
-			return Response.json({ deleted: erased.deleted, email });
+			return handleErase(request);
 		}
 		if (url.pathname === demoWebhookPath && request.method === "POST") {
 			return handleFulfilmentWebhook(request);
 		}
-		return null;
+		return Promise.resolve(null);
 	};
 
 	const server = createServer(async (incoming, outgoing) => {

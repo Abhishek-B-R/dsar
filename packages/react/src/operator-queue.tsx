@@ -108,7 +108,16 @@ const fulfilLabel = (requestType: string | undefined, liveRecords: number) => {
 	if (requestType === "delete") {
 		return "Confirm data is gone";
 	}
-	return "Complete request";
+	if (requestType === "access") {
+		return "Mark as disclosed";
+	}
+	if (requestType === "portability") {
+		return "Mark export complete";
+	}
+	if (requestType === "correct") {
+		return "Mark as corrected";
+	}
+	return "Mark as handled";
 };
 
 const formatMoney = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
@@ -122,21 +131,59 @@ const demoPeopleUrl = (dsarBaseUrl: string, email: string): string =>
 const demoEraseUrl = (dsarBaseUrl: string): string =>
 	`${demoOrigin(dsarBaseUrl)}/demo/erase`;
 
+const demoExportUrl = (dsarBaseUrl: string, email: string): string =>
+	`${demoOrigin(dsarBaseUrl)}/demo/export?email=${encodeURIComponent(email)}`;
+
+const demoCorrectUrl = (dsarBaseUrl: string): string =>
+	`${demoOrigin(dsarBaseUrl)}/demo/correct`;
+
+const holdHint = (
+	requestType: string | undefined,
+	liveTotal: number
+): string => {
+	if (requestType === "delete") {
+		return `${String(liveTotal)} live record${liveTotal === 1 ? "" : "s"} will be erased. Preview only.`;
+	}
+	if (requestType === "correct") {
+		return "Current values. Apply the correction, then mark as corrected.";
+	}
+	return `${String(liveTotal)} live record${liveTotal === 1 ? "" : "s"}. Download JSON for the full copy. Preview only.`;
+};
+
+const emptyHoldCopy = (
+	requestType: string | undefined,
+	requestFulfilled: boolean
+): string => {
+	if (requestFulfilled && requestType === "delete") {
+		return "Acme no longer has this email. Lookup returns nothing.";
+	}
+	if (requestFulfilled) {
+		return "No product account for this email.";
+	}
+	return "No product account for this email. There is nothing to disclose, correct, or erase.";
+};
+
 const AcmeRecords = ({
 	person,
 	requestFulfilled,
+	requestType,
 }: {
 	readonly person: AcmePerson | null;
 	readonly requestFulfilled: boolean;
+	readonly requestType: string | undefined;
 }) => {
 	if (person === null || person.user === null) {
 		return (
 			<div className="dsar-acme">
 				<p className="dsar-list-title">Held at Acme</p>
-				<p className={requestFulfilled ? "dsar-acme-ok" : "dsar-empty"}>
-					{requestFulfilled
-						? "Acme no longer has this email. Lookup returns nothing."
-						: "No product account for this email. Fulfilment will not delete anything."}
+				<p
+					className={
+						requestFulfilled && requestType === "delete"
+							? "dsar-acme-ok"
+							: "dsar-empty"
+					}
+				>
+					{emptyHoldCopy(requestType, requestFulfilled)}
 				</p>
 			</div>
 		);
@@ -151,10 +198,7 @@ const AcmeRecords = ({
 			<p className="dsar-meta">
 				{person.user.name} · {person.user.plan} plan
 			</p>
-			<p className="dsar-meta">
-				{String(liveTotal)} live record{liveTotal === 1 ? "" : "s"}. Preview
-				only, not the full store.
-			</p>
+			<p className="dsar-meta">{holdHint(requestType, liveTotal)}</p>
 			<table className="dsar-table">
 				<caption className="dsar-table-caption">
 					Sessions · {String(person.sessions.preview.length)} of{" "}
@@ -222,6 +266,7 @@ const QueueActions = ({
 	liveRecords,
 	onAction,
 	onErase,
+	onExport,
 	onRefuse,
 	path,
 	requestType,
@@ -231,6 +276,7 @@ const QueueActions = ({
 	readonly liveRecords: number;
 	readonly onAction: (path: string, body: unknown) => void;
 	readonly onErase: () => void;
+	readonly onExport: () => void;
 	readonly onRefuse: () => void;
 	readonly path: (suffix: string) => string;
 	readonly requestType: string | undefined;
@@ -267,6 +313,16 @@ const QueueActions = ({
 		) : null}
 		{status === "in_progress" ? (
 			<>
+				{requestType === "access" || requestType === "portability" ? (
+					<button
+						className="dsar-btn-secondary"
+						disabled={busy}
+						onClick={onExport}
+						type="button"
+					>
+						Download JSON copy
+					</button>
+				) : null}
 				<button
 					disabled={busy}
 					onClick={() => onAction(path("/fulfilment"), {})}
@@ -284,7 +340,7 @@ const QueueActions = ({
 				</button>
 			</>
 		) : null}
-		{status === "fulfilled" && liveRecords > 0 ? (
+		{status === "fulfilled" && requestType === "delete" && liveRecords > 0 ? (
 			<button disabled={busy} onClick={onErase} type="button">
 				{`Erase leftover ${String(liveRecords)} record${liveRecords === 1 ? "" : "s"}`}
 			</button>
@@ -302,11 +358,140 @@ const QueueActions = ({
 	</div>
 );
 
+const CorrectionForm = ({
+	busy,
+	initialName,
+	initialPlan,
+	onApply,
+}: {
+	readonly busy: boolean;
+	readonly initialName: string;
+	readonly initialPlan: string;
+	readonly onApply: (input: { name: string; plan: string }) => void;
+}) => {
+	const [name, setName] = useState(initialName);
+	const [plan, setPlan] = useState(initialPlan);
+	return (
+		<form
+			className="dsar-form"
+			onSubmit={(event) => {
+				event.preventDefault();
+				onApply({ name: name.trim(), plan: plan.trim() });
+			}}
+		>
+			<p className="dsar-list-title">Apply correction</p>
+			<label className="dsar-field">
+				<span>Name</span>
+				<input onChange={(event) => setName(event.target.value)} value={name} />
+			</label>
+			<label className="dsar-field">
+				<span>Plan</span>
+				<input onChange={(event) => setPlan(event.target.value)} value={plan} />
+			</label>
+			<div className="dsar-actions dsar-actions-row">
+				<button disabled={busy} type="submit">
+					Save to Acme
+				</button>
+			</div>
+		</form>
+	);
+};
+
+const CorrectionSlot = ({
+	busy,
+	onCorrect,
+	person,
+	requestType,
+	status,
+}: {
+	readonly busy: boolean;
+	readonly onCorrect: (input: { name: string; plan: string }) => void;
+	readonly person: AcmePerson | null;
+	readonly requestType: string | undefined;
+	readonly status: string | undefined;
+}) => {
+	if (status !== "in_progress" || requestType !== "correct" || !person?.user) {
+		return null;
+	}
+	return (
+		<CorrectionForm
+			busy={busy}
+			initialName={person.user.name}
+			initialPlan={person.user.plan}
+			onApply={onCorrect}
+		/>
+	);
+};
+
+const RefuseForm = ({
+	busy,
+	onAction,
+	onRefuseCancel,
+	onRefuseReason,
+	open,
+	path,
+	refuseReason,
+}: {
+	readonly busy: boolean;
+	readonly onAction: (path: string, body: unknown) => void;
+	readonly onRefuseCancel: () => void;
+	readonly onRefuseReason: (value: string) => void;
+	readonly open: boolean;
+	readonly path: (suffix: string) => string;
+	readonly refuseReason: string;
+}) => {
+	if (!open) {
+		return null;
+	}
+	return (
+		<form
+			className="dsar-form"
+			onSubmit={(event) => {
+				event.preventDefault();
+				onAction(path("/refusals"), { rationale: refuseReason.trim() });
+			}}
+		>
+			<label className="dsar-field">
+				<span>Reason for refusal</span>
+				<textarea
+					onChange={(event) => onRefuseReason(event.target.value)}
+					value={refuseReason}
+				/>
+			</label>
+			<div className="dsar-actions dsar-actions-row">
+				<button disabled={busy} type="submit">
+					Confirm refusal
+				</button>
+				<button
+					className="dsar-btn-secondary"
+					onClick={onRefuseCancel}
+					type="button"
+				>
+					Cancel
+				</button>
+			</div>
+		</form>
+	);
+};
+
+const liveRecordCount = (person: AcmePerson | null): number => {
+	if (person === null || person.user === null) {
+		return 0;
+	}
+	return (
+		person.sessions.live +
+		person.orders.live +
+		(person.user.deletedAt === null ? 1 : 0)
+	);
+};
+
 const QueueCard = ({
 	busy,
 	detail,
 	onAction,
+	onCorrect,
 	onErase,
+	onExport,
 	onRefuse,
 	onRefuseCancel,
 	onRefuseReason,
@@ -318,11 +503,10 @@ const QueueCard = ({
 	readonly busy: boolean;
 	readonly detail: RequestDetail | undefined;
 	readonly onAction: (path: string, body: unknown) => void;
+	readonly onCorrect: (input: { name: string; plan: string }) => void;
 	readonly onErase: () => void;
+	readonly onExport: () => void;
 	readonly onRefuse: () => void;
-	readonly onRefuseCancel: () => void;
-	readonly onRefuseReason: (value: string) => void;
-	readonly person: AcmePerson | null;
 	readonly refuseOpen: boolean;
 	readonly refuseReason: string;
 	readonly row: QueueItem;
@@ -333,12 +517,7 @@ const QueueCard = ({
 	const jurisdiction = detail?.capture?.jurisdiction;
 	const path = (suffix: string) =>
 		`/requests/${encodeURIComponent(row.id)}${suffix}`;
-	const liveRecords =
-		person === null || person.user === null
-			? 0
-			: person.sessions.live +
-				person.orders.live +
-				(person.user.deletedAt === null ? 1 : 0);
+	const liveRecords = liveRecordCount(person);
 	return (
 		<li className="dsar-card">
 			<div className="dsar-card-head">
@@ -365,46 +544,38 @@ const QueueCard = ({
 				<p className="dsar-meta">{detail.requestor.email}</p>
 			)}
 			{text === undefined ? null : <p className="dsar-quote">{text}</p>}
-			<AcmeRecords person={person} requestFulfilled={status === "fulfilled"} />
+			<AcmeRecords
+				person={person}
+				requestFulfilled={status === "fulfilled"}
+				requestType={requestType}
+			/>
+			<CorrectionSlot
+				busy={busy}
+				onCorrect={onCorrect}
+				person={person}
+				requestType={requestType}
+				status={status}
+			/>
 			<QueueActions
 				busy={busy}
 				liveRecords={liveRecords}
 				onAction={onAction}
 				onErase={onErase}
+				onExport={onExport}
 				onRefuse={onRefuse}
 				path={path}
 				requestType={requestType}
 				status={status}
 			/>
-			{refuseOpen ? (
-				<form
-					className="dsar-form"
-					onSubmit={(event) => {
-						event.preventDefault();
-						onAction(path("/refusals"), { rationale: refuseReason.trim() });
-					}}
-				>
-					<label className="dsar-field">
-						<span>Reason for refusal</span>
-						<textarea
-							onChange={(event) => onRefuseReason(event.target.value)}
-							value={refuseReason}
-						/>
-					</label>
-					<div className="dsar-actions dsar-actions-row">
-						<button disabled={busy} type="submit">
-							Confirm refusal
-						</button>
-						<button
-							className="dsar-btn-secondary"
-							onClick={onRefuseCancel}
-							type="button"
-						>
-							Cancel
-						</button>
-					</div>
-				</form>
-			) : null}
+			<RefuseForm
+				busy={busy}
+				onAction={onAction}
+				onRefuseCancel={onRefuseCancel}
+				onRefuseReason={onRefuseReason}
+				open={refuseOpen}
+				path={path}
+				refuseReason={refuseReason}
+			/>
 		</li>
 	);
 };
@@ -484,6 +655,53 @@ export const OperatorQueue = () => {
 		}
 	};
 
+	const exportAcme = async (email: string) => {
+		try {
+			const response = await fetch(demoExportUrl(client.baseUrl, email), {
+				credentials: "include",
+			});
+			if (!response.ok) {
+				setAlertMessage("Could not build an Acme export.");
+				return;
+			}
+			const blob = await response.blob();
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = `acme-export-${email}.json`;
+			link.click();
+			URL.revokeObjectURL(url);
+		} catch {
+			setAlertMessage("Could not build an Acme export.");
+		}
+	};
+
+	const correctAcme = async (
+		id: string,
+		email: string,
+		input: { name: string; plan: string }
+	) => {
+		setBusyId(id);
+		setAlertMessage(null);
+		try {
+			const response = await fetch(demoCorrectUrl(client.baseUrl), {
+				body: JSON.stringify({ email, name: input.name, plan: input.plan }),
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				method: "POST",
+			});
+			if (!response.ok) {
+				setAlertMessage("Could not apply the correction.");
+				return;
+			}
+			await refresh();
+		} catch {
+			setAlertMessage("Could not apply the correction.");
+		} finally {
+			setBusyId(null);
+		}
+	};
+
 	const eraseAcme = async (id: string, email: string) => {
 		setBusyId(id);
 		setAlertMessage(null);
@@ -510,8 +728,8 @@ export const OperatorQueue = () => {
 		<div className="dsar-root dsar-root-wide">
 			<h1>Request queue</h1>
 			<p className="dsar-lede">
-				Match the filer to an Acme account, then erase those rows. Deleted rows
-				stay in the table so you can check the webhook ran.
+				Match the filer to an Acme account, then disclose, correct, export, or
+				erase depending on the request type.
 			</p>
 			<div className="dsar-panel">
 				{alertMessage === null ? null : (
@@ -545,6 +763,15 @@ export const OperatorQueue = () => {
 									}
 									void runAction(row.id, path, body);
 								}}
+								onCorrect={(input) => {
+									const email =
+										details[row.id]?.requestor?.email ?? row.requestor?.email;
+									if (email === undefined) {
+										setAlertMessage("No email on this request to correct.");
+										return;
+									}
+									void correctAcme(row.id, email, input);
+								}}
 								onErase={() => {
 									const email =
 										details[row.id]?.requestor?.email ?? row.requestor?.email;
@@ -553,6 +780,15 @@ export const OperatorQueue = () => {
 										return;
 									}
 									void eraseAcme(row.id, email);
+								}}
+								onExport={() => {
+									const email =
+										details[row.id]?.requestor?.email ?? row.requestor?.email;
+									if (email === undefined) {
+										setAlertMessage("No email on this request to export.");
+										return;
+									}
+									void exportAcme(email);
 								}}
 								onRefuse={() => {
 									setRefuseId(row.id);

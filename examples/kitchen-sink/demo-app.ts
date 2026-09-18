@@ -210,7 +210,56 @@ export const openDemoApp = (filename: string) => {
 		};
 	};
 
-	return { eraseByEmail, lookupByEmail };
+	const exportByEmail = (email: string) => {
+		const normalized = email.trim().toLowerCase();
+		const person = lookupByEmail(normalized);
+		const allSessions = db
+			.prepare(
+				"SELECT id, ip, last_seen AS lastSeen, deleted_at AS deletedAt FROM sessions WHERE lower(email) = ? ORDER BY last_seen DESC"
+			)
+			.all(normalized) as DemoSession[];
+		const allOrders = db
+			.prepare(
+				"SELECT id, sku, amount_cents AS amountCents, created_at AS createdAt, deleted_at AS deletedAt FROM orders WHERE lower(email) = ? ORDER BY created_at DESC"
+			)
+			.all(normalized) as DemoOrder[];
+		return {
+			exportedAt: nowIso(),
+			orders: allOrders,
+			sessions: allSessions,
+			user: person.user,
+		};
+	};
+
+	const correctByEmail = (input: {
+		readonly email: string;
+		readonly name?: string;
+		readonly plan?: string;
+	}): DemoUser | null => {
+		const normalized = input.email.trim().toLowerCase();
+		const current = db
+			.prepare(
+				"SELECT email, name, plan, created_at AS createdAt, deleted_at AS deletedAt FROM users WHERE lower(email) = ?"
+			)
+			.get(normalized) as DemoUser | undefined;
+		if (current === undefined) {
+			return null;
+		}
+		const name =
+			input.name !== undefined && input.name.trim().length > 0
+				? input.name.trim()
+				: current.name;
+		const plan =
+			input.plan !== undefined && input.plan.trim().length > 0
+				? input.plan.trim()
+				: current.plan;
+		db.prepare(
+			"UPDATE users SET name = ?, plan = ? WHERE lower(email) = ?"
+		).run(name, plan, normalized);
+		return { ...current, name, plan };
+	};
+
+	return { correctByEmail, eraseByEmail, exportByEmail, lookupByEmail };
 };
 
 export const demoPeoplePath = "/demo/people";

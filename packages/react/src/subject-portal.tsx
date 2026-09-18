@@ -29,6 +29,22 @@ const JURISDICTIONS = [
 	{ label: "Australia", value: "australia" },
 ] as const;
 
+const detailsPrompt = (requestType: string): string => {
+	if (requestType === "access") {
+		return "Anything to include in the copy?";
+	}
+	if (requestType === "delete") {
+		return "Anything we should know before erasing?";
+	}
+	if (requestType === "correct") {
+		return "What is wrong today?";
+	}
+	if (requestType === "portability") {
+		return "Any systems to include in the export?";
+	}
+	return "What do you need?";
+};
+
 const REQUEST_TYPES = [
 	{ label: "Access my data", value: "access" },
 	{ label: "Delete my data", value: "delete" },
@@ -68,6 +84,8 @@ export const SubjectPortal = ({
 	const [jurisdiction, setJurisdiction] = useState(defaultJurisdiction);
 	const [requestType, setRequestType] = useState("access");
 	const [rawText, setRawText] = useState("");
+	const [correctedName, setCorrectedName] = useState("");
+	const [correctedPlan, setCorrectedPlan] = useState("");
 	const [rows, setRows] = useState<readonly RequestRow[]>([]);
 	const [alertMessage, setAlertMessage] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
@@ -99,12 +117,24 @@ export const SubjectPortal = ({
 		setPending(true);
 		setAlertMessage(null);
 		try {
+			const correctionLines = [
+				requestType === "correct" && correctedName.trim().length > 0
+					? `Correct name to: ${correctedName.trim()}`
+					: undefined,
+				requestType === "correct" && correctedPlan.trim().length > 0
+					? `Correct plan to: ${correctedPlan.trim()}`
+					: undefined,
+			].filter((line) => line !== undefined);
+			const details = rawText.trim();
+			const composed = [...correctionLines, details].filter(
+				(line) => line.length > 0
+			);
 			await client.post("/requests", {
 				intakeSource: {
 					channel: "web",
 					rawText:
-						rawText.trim().length > 0
-							? rawText.trim()
+						composed.length > 0
+							? composed.join("\n")
 							: `Please ${requestType} my personal data.`,
 					receivedAt: new Date().toISOString(),
 					type: "portal",
@@ -138,7 +168,8 @@ export const SubjectPortal = ({
 		<div className="dsar-root">
 			<h1>Privacy requests</h1>
 			<p className="dsar-lede">
-				Tell us who you are and what you want done with your data.
+				Access, delete, correct, or export. The operator queue works each type
+				against the Acme account for this email.
 			</p>
 			<div className="dsar-panel">
 				<form className="dsar-form" onSubmit={onSubmit}>
@@ -194,13 +225,33 @@ export const SubjectPortal = ({
 							))}
 						</select>
 					</label>
+					{requestType === "correct" ? (
+						<>
+							<label className="dsar-field">
+								<span>Correct name to</span>
+								<input
+									name="correctedName"
+									onChange={(event) => setCorrectedName(event.target.value)}
+									value={correctedName}
+								/>
+							</label>
+							<label className="dsar-field">
+								<span>Correct plan to</span>
+								<input
+									name="correctedPlan"
+									onChange={(event) => setCorrectedPlan(event.target.value)}
+									placeholder="free, team, pro, enterprise"
+									value={correctedPlan}
+								/>
+							</label>
+						</>
+					) : null}
 					<label className="dsar-field" htmlFor={detailsId}>
-						<span>Details (optional)</span>
+						<span>{detailsPrompt(requestType)}</span>
 						<textarea
 							id={detailsId}
 							name="rawText"
 							onChange={(event) => setRawText(event.target.value)}
-							placeholder="Anything we should know: accounts, products, dates."
 							value={rawText}
 						/>
 					</label>
