@@ -1,0 +1,9 @@
+{
+	"id": "clock-recompute",
+	"eventCount": 400,
+	"warmup": 10,
+	"samples": 80,
+	"boundMs": 50,
+	"measuredP95Ms": 0.12,
+	"runtime": "bun 1.3.14 darwin, 2026-09-18"
+}

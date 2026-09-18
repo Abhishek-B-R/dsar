@@ -1,0 +1,69 @@
+---
+title: "Clock and subject lookup benches"
+description: "Optional p95 benches for legal-clock recompute and indexed subject lookup."
+group: reference-testing
+---
+
+<include src="../../_shared/alpha-warning.mdx" />
+
+Run `bun run bench` for legal-clock recompute and indexed subject lookup p95.
+`bun run test` does not include them. A 10k-request by 1k-event matrix does not
+belong on every pull request.
+
+## Run
+
+From the workspace root:
+
+```sh
+bun run bench
+```
+
+Package scripts:
+
+```sh
+bun run --cwd packages/backend bench
+bun run --cwd packages/internals/persistence bench
+```
+
+The bench files are named `*.bench.ts` and are collected only by
+`vitest.bench.ts`. Ordinary `vitest run` (and therefore `bun run test`) does
+not load them.
+
+## Clock recompute
+
+`computeLegalClock` in `packages/backend/src/services/legal-clock/engine.ts` on
+one request with 400 timeline events: verification pause/resume, clarification
+pause/resume, and deadline extensions.
+
+The engine takes `now` as an ISO timestamp, so the fixture pins that value
+instead of using Effect `TestClock`. Work is in-memory. There is no SQL in this
+path.
+
+p95 bound: 50ms. A local Bun 1.3.14 run measured about 0.12ms. The bound keeps
+the original issue target rather than tightening onto a noisy microsecond
+measurement.
+
+Baseline: `packages/backend/test/legal-clock/clock.bench.baseline.json`.
+
+## Subject lookup
+
+`listBySubject` after `idx_requests_tenant_subject_created`, on 2000 SQLite
+request rows in `:memory:`. Seed uses the same subject/policy/status pattern as
+the existing scale test in `packages/internals/persistence/test/persistence.test.ts`.
+That test still times a single 10k-row lookup on every PR. This bench is p95 of
+repeated lookups on a smaller fixture, and it is not part of `bun run test`.
+
+p95 bound: 100ms. The same local run measured about 0.43ms. Same rule as the
+clock bound: keep the issue target when p95 is comfortably under it.
+
+Baseline: `packages/internals/persistence/test/subject-lookup.bench.baseline.json`.
+
+## CI
+
+`.github/workflows/bench.yml` runs `bun run bench` on push to `main` and
+`canary`, and on `workflow_dispatch`. It is not a pull-request job.
+
+The gate is the bound in each baseline file, not a tight match to
+`measuredP95Ms`, so a slower GitHub runner does not fail a linear scan.
+
+Policy-pack diff timing is not in this suite.

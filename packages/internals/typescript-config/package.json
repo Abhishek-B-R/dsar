@@ -6,6 +6,7 @@
 	"exports": {
 		"./*.json": "./*.json",
 		"./vitest": "./vitest.ts",
+		"./vitest-bench": "./vitest-bench.ts",
 		"./vitest-setup": "./vitest-setup.ts"
 	},
 	"scripts": {

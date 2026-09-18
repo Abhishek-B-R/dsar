@@ -15,6 +15,7 @@
 		"format": "oxfmt --check src test package.json tsconfig.json tsdown.config.ts README.md",
 		"lint": "oxlint .",
 		"test": "vitest run",
+		"bench": "vitest run --config vitest.bench.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

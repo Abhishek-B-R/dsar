@@ -20,6 +20,7 @@ export default defineConfig({
 		{
 			files: [
 				"**/*.{test,spec}.{ts,tsx,js,jsx}",
+				"**/*.bench.ts",
 				"**/__tests__/**/*.{ts,tsx,js,jsx}",
 			],
 			rules: {

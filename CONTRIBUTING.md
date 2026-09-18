@@ -38,6 +38,12 @@ Run tests:
 bun run test
 ```
 
+Optional clock and subject-lookup p95 benches stay out of that suite:
+
+```sh
+bun run bench
+```
+
 Format and fix common issues:
 
 ```sh
