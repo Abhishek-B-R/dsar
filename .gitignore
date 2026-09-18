@@ -15,6 +15,8 @@ coverage
 packages/dsar/docs
 
 # Local example runtime artifacts
+examples/nextjs-deletion-webhook/.demo-users.json
+examples/nextjs-deletion-webhook/.next/
 examples/local-storage/.dsar-artifacts/
 examples/local-storage/.dsar-local.db
 examples/local-storage/.dsar-local.db-shm

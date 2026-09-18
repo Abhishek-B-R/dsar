@@ -1,0 +1,30 @@
+{
+	"name": "dsar-nextjs-deletion-webhook-example",
+	"private": true,
+	"description": "Next.js App Router example that verifies DSAR webhooks and deletes on request_fulfilled.",
+	"type": "module",
+	"scripts": {
+		"dev": "next dev",
+		"smoke": "vitest run",
+		"start": "next start",
+		"test": "vitest run",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@dsar/node-sdk": "workspace:*",
+		"next": "^16.2.11",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	},
+	"devDependencies": {
+		"@dsar/typescript-config": "workspace:*",
+		"@types/node": "catalog:types",
+		"@types/react": "^19.0.10",
+		"@types/react-dom": "^19.0.4",
+		"typescript": "catalog:utils",
+		"vitest": "catalog:utils"
+	},
+	"engines": {
+		"node": ">=24 <25"
+	}
+}
