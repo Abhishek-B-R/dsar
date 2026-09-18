@@ -9,23 +9,29 @@ import { useDsarClient } from "./provider";
 interface RequestRow {
 	readonly id: string;
 	readonly status?: string;
-	readonly jurisdiction?: string;
+	readonly receivedAt?: string;
 }
 
 export interface SubjectPortalProps {
 	readonly defaultJurisdiction?: string;
+	/** Identifier used for GET /subjects/:subjectId. Must match the signed-in subject. */
+	readonly subjectId: string;
+	/** Stamped on create so the subject list can find the request. */
+	readonly email?: string;
 }
 
 /**
- * Subject-facing portal: file a request and list the caller's own requests.
- * Hosted inth.app authenticates the subject. Local demos do that in the BFF.
+ * Subject-facing portal: file a request and list that subject's requests.
+ * Does not call GET /requests (operator queue).
  */
 export const SubjectPortal = ({
 	defaultJurisdiction = "eu",
+	email,
+	subjectId,
 }: SubjectPortalProps) => {
 	const client = useDsarClient();
 	const jurisdictionId = useId();
-	const requestId = useId();
+	const requestFieldId = useId();
 	const [jurisdiction, setJurisdiction] = useState(defaultJurisdiction);
 	const [rawText, setRawText] = useState("Please provide my personal data.");
 	const [rows, setRows] = useState<readonly RequestRow[]>([]);
@@ -33,11 +39,11 @@ export const SubjectPortal = ({
 	const [pending, setPending] = useState(false);
 
 	const refresh = useCallback(async () => {
-		const listed = await client.get<{ readonly items?: readonly RequestRow[] }>(
-			"/requests"
-		);
-		setRows(listed.items ?? []);
-	}, [client]);
+		const profile = await client.get<{
+			readonly requests?: readonly RequestRow[];
+		}>(`/subjects/${encodeURIComponent(subjectId)}`);
+		setRows(profile.requests ?? []);
+	}, [client, subjectId]);
 
 	useEffect(() => {
 		refresh().catch((error: unknown) => {
@@ -61,6 +67,9 @@ export const SubjectPortal = ({
 					receivedAt: new Date().toISOString(),
 				},
 				jurisdiction,
+				...(email === undefined
+					? {}
+					: { requestor: { email, type: "subject" } }),
 			});
 			await refresh();
 		} catch (error) {
@@ -91,10 +100,10 @@ export const SubjectPortal = ({
 							value={jurisdiction}
 						/>
 					</label>
-					<label className="dsar-field" htmlFor={requestId}>
+					<label className="dsar-field" htmlFor={requestFieldId}>
 						<span>What are you asking for?</span>
 						<textarea
-							id={requestId}
+							id={requestFieldId}
 							name="rawText"
 							onChange={(event) => setRawText(event.target.value)}
 							value={rawText}

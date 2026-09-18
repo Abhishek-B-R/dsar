@@ -13,7 +13,7 @@ import { DsarProvider, SubjectPortal, hosted } from "@dsar/react";
 export function App() {
 	return (
 		<DsarProvider mode={hosted({ project: "acme" })}>
-			<SubjectPortal />
+			<SubjectPortal subjectId="sub_123" email="ada@example.com" />
 		</DsarProvider>
 	);
 }
