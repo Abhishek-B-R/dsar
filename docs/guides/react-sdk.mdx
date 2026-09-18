@@ -1,0 +1,36 @@
+---
+title: "React SDK"
+description: "Embed a subject portal or operator queue with @dsar/react. Hosted backends live on inth.com."
+group: guides
+---
+
+<include src="../_shared/alpha-warning.mdx" />
+
+`@dsar/react` is the UI kit. It does not own login. That matches the [auth model](../architecture/auth-model.md): the host authenticates, DSAR sees a projected identity.
+
+## Hosted (inth.com)
+
+```tsx
+import { DsarProvider, SubjectPortal, hosted } from "@dsar/react";
+
+<DsarProvider mode={hosted({ project: "acme" })}>
+	<SubjectPortal />
+</DsarProvider>
+```
+
+Requests go to `https://acme.inth.app/dsar`. Webhooks for that project use the same origin (`https://acme.inth.app/dsar/webhooks/...`). Cookies stay on inth.app. Do not put `DSAR_API_TOKEN` in the browser.
+
+## Local demo
+
+`examples/subject-portal` and `examples/dashboard` run `dsarInstance` in a Next.js route on an in-process SQLite file, like the c15t demo's sqlite/turso file. The widget calls `/api/dsar`. The route attaches the demo bearer token.
+
+```sh
+bunx turbo run dev --filter=dsar-subject-portal-example --filter=dsar-dashboard-example
+```
+
+- Subject portal: `http://localhost:1356`
+- Operator queue: `http://localhost:1355`
+
+## Docker Postgres
+
+Kitchen-sink already accepts `DSAR_PERSISTENCE_DRIVER=pg` and `DSAR_PERSISTENCE_PG_URL`. Point a portal example at that URL when you want Postgres instead of the SQLite file.
