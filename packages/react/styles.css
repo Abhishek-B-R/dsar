@@ -295,6 +295,67 @@
 	font-size: 0.875rem;
 }
 
+.dsar-acme-ok {
+	margin: 0;
+	color: oklch(0.42 0.09 155);
+	font-size: 0.875rem;
+	font-weight: 600;
+}
+
+.dsar-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.8125rem;
+}
+
+.dsar-table-caption {
+	caption-side: top;
+	padding-bottom: 0.35rem;
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-align: start;
+	text-transform: uppercase;
+	color: var(--dsar-muted);
+}
+
+.dsar-table th,
+.dsar-table td {
+	padding: 0.35rem 0.4rem;
+	text-align: start;
+	border-bottom: 1px solid var(--dsar-border);
+}
+
+.dsar-table .dsar-num {
+	font-variant-numeric: tabular-nums;
+	text-align: end;
+}
+
+.dsar-mono {
+	font-family: var(--dsar-mono);
+	font-variant-numeric: tabular-nums;
+}
+
+.dsar-row-gone td {
+	color: var(--dsar-muted);
+	text-decoration: line-through;
+}
+
+.dsar-btn-danger {
+	color: var(--dsar-danger) !important;
+	background: transparent !important;
+	box-shadow: inset 0 0 0 1px
+		color-mix(in oklch, var(--dsar-danger) 35%, transparent);
+}
+
+.dsar-btn-danger:hover:not(:disabled) {
+	background: color-mix(
+		in oklch,
+		var(--dsar-danger) 8%,
+		var(--dsar-surface)
+	) !important;
+}
+
 .dsar-id {
 	overflow-wrap: anywhere;
 	font-family: var(--dsar-mono);

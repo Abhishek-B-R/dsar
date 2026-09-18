@@ -142,6 +142,27 @@ const requestorEmail = (payload: unknown): string | undefined => {
 	return requestor.email;
 };
 
+const captureRequestType = (payload: unknown): string | undefined => {
+	if (
+		payload === null ||
+		typeof payload !== "object" ||
+		!("capture" in payload)
+	) {
+		return undefined;
+	}
+	const { capture } = payload;
+	if (
+		capture === null ||
+		typeof capture !== "object" ||
+		!("requestType" in capture)
+	) {
+		return undefined;
+	}
+	return typeof capture.requestType === "string"
+		? capture.requestType
+		: undefined;
+};
+
 const start = async (): Promise<void> => {
 	const persistence = await loadPersistence();
 	const runtime = dsarInstance({
@@ -153,9 +174,9 @@ const start = async (): Promise<void> => {
 	);
 	const adminOrigin = "http://localhost:1357";
 
-	const lookupRequestEmail = async (
+	const lookupRequest = async (
 		requestId: string
-	): Promise<string | undefined> => {
+	): Promise<{ email?: string; requestType?: string } | undefined> => {
 		const response = await runtime.handler(
 			new Request(`http://127.0.0.1${basePath}/requests/${requestId}`, {
 				headers: {
@@ -175,7 +196,10 @@ const start = async (): Promise<void> => {
 		) {
 			return undefined;
 		}
-		return requestorEmail(payload.data);
+		return {
+			email: requestorEmail(payload.data),
+			requestType: captureRequestType(payload.data),
+		};
 	};
 
 	const handleDemo = async (request: Request): Promise<Response | null> => {
@@ -196,15 +220,22 @@ const start = async (): Promise<void> => {
 			) {
 				return Response.json({ ignored: true });
 			}
-			const email = await lookupRequestEmail(body.requestId);
-			if (email === undefined) {
+			const found = await lookupRequest(body.requestId);
+			if (found?.email === undefined) {
 				return Response.json(
 					{ deleted: 0, reason: "no_email" },
 					{ status: 200 }
 				);
 			}
-			const erased = demoApp.eraseByEmail(email);
-			return Response.json({ deleted: erased.deleted, email });
+			if (found.requestType !== "delete") {
+				return Response.json({
+					deleted: 0,
+					email: found.email,
+					reason: "not_a_delete",
+				});
+			}
+			const erased = demoApp.eraseByEmail(found.email);
+			return Response.json({ deleted: erased.deleted, email: found.email });
 		}
 		return null;
 	};

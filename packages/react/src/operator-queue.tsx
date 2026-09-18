@@ -77,12 +77,15 @@ const intakeText = (detail: RequestDetail | undefined): string | undefined => {
 interface AcmePerson {
 	readonly orders: readonly {
 		readonly amountCents: number;
+		readonly createdAt: string;
 		readonly deletedAt: string | null;
 		readonly sku: string;
 	}[];
 	readonly sessions: readonly {
 		readonly deletedAt: string | null;
 		readonly id: string;
+		readonly ip: string;
+		readonly lastSeen: string;
 	}[];
 	readonly user: {
 		readonly deletedAt: string | null;
@@ -95,60 +98,127 @@ interface AcmePerson {
 const liveCount = (rows: readonly { readonly deletedAt: string | null }[]) =>
 	rows.filter((row) => row.deletedAt === null).length;
 
+const fulfilLabel = (requestType: string | undefined, liveRecords: number) => {
+	if (requestType === "delete" && liveRecords > 0) {
+		return `Erase ${String(liveRecords)} live record${liveRecords === 1 ? "" : "s"}`;
+	}
+	if (requestType === "delete") {
+		return "Confirm data is gone";
+	}
+	return "Complete request";
+};
+
+const formatMoney = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
+
 const demoPeopleUrl = (dsarBaseUrl: string, email: string): string => {
 	const origin = dsarBaseUrl.replace(/\/api\/v1\/?$/, "");
 	return `${origin}/demo/people?email=${encodeURIComponent(email)}`;
 };
 
 const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
-	if (person === null) {
-		return <p className="dsar-empty">No Acme account for this email.</p>;
-	}
-	if (person.user === null) {
-		return <p className="dsar-empty">No Acme account for this email.</p>;
+	if (person === null || person.user === null) {
+		return (
+			<div className="dsar-acme">
+				<p className="dsar-list-title">Held at Acme</p>
+				<p className="dsar-empty">
+					No product account for this email. Fulfilment will not delete
+					anything.
+				</p>
+			</div>
+		);
 	}
 	const liveSessions = liveCount(person.sessions);
 	const liveOrders = liveCount(person.orders);
-	const erased = person.user.deletedAt !== null;
+	const liveTotal =
+		liveSessions + liveOrders + (person.user.deletedAt === null ? 1 : 0);
+	const erased = liveTotal === 0;
 	return (
 		<div className="dsar-acme">
-			<p className="dsar-list-title">Acme product data</p>
+			<p className="dsar-list-title">Held at Acme</p>
 			<p className="dsar-meta">
-				{person.user.name} · {person.user.plan}
-				{erased ? " · erased" : ""}
+				{person.user.name} · {person.user.plan} plan
 			</p>
-			<ul className="dsar-acme-counts">
-				<li>
-					{liveSessions} live session{liveSessions === 1 ? "" : "s"}
-					{person.sessions.length === liveSessions
-						? ""
-						: ` (${String(person.sessions.length - liveSessions)} deleted)`}
-				</li>
-				<li>
-					{liveOrders} live order{liveOrders === 1 ? "" : "s"}
-					{person.orders.length === liveOrders
-						? ""
-						: ` (${String(person.orders.length - liveOrders)} deleted)`}
-				</li>
-			</ul>
 			{erased ? (
-				<p className="dsar-empty">Fulfilment webhook erased this account.</p>
-			) : null}
+				<p className="dsar-acme-ok" role="status">
+					Nothing live remains. Account, sessions, and orders are tombstoned.
+				</p>
+			) : (
+				<p className="dsar-meta">
+					{String(liveTotal)} live record{liveTotal === 1 ? "" : "s"} will be
+					erased when you fulfil a delete request.
+				</p>
+			)}
+			<table className="dsar-table">
+				<caption className="dsar-table-caption">Sessions</caption>
+				<thead>
+					<tr>
+						<th scope="col">ID</th>
+						<th scope="col">IP</th>
+						<th scope="col">Last seen</th>
+						<th scope="col">State</th>
+					</tr>
+				</thead>
+				<tbody>
+					{person.sessions.map((session) => (
+						<tr
+							className={
+								session.deletedAt === null ? undefined : "dsar-row-gone"
+							}
+							key={session.id}
+						>
+							<td className="dsar-mono">{session.id}</td>
+							<td className="dsar-mono">{session.ip}</td>
+							<td>{formatWhen(session.lastSeen)}</td>
+							<td>{session.deletedAt === null ? "live" : "deleted"}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+			<table className="dsar-table">
+				<caption className="dsar-table-caption">Orders</caption>
+				<thead>
+					<tr>
+						<th scope="col">SKU</th>
+						<th className="dsar-num" scope="col">
+							Amount
+						</th>
+						<th scope="col">Placed</th>
+						<th scope="col">State</th>
+					</tr>
+				</thead>
+				<tbody>
+					{person.orders.map((order) => (
+						<tr
+							className={order.deletedAt === null ? undefined : "dsar-row-gone"}
+							key={order.id}
+						>
+							<td className="dsar-mono">{order.sku}</td>
+							<td className="dsar-num">{formatMoney(order.amountCents)}</td>
+							<td>{formatWhen(order.createdAt)}</td>
+							<td>{order.deletedAt === null ? "live" : "deleted"}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
 		</div>
 	);
 };
 
 const QueueActions = ({
 	busy,
+	liveRecords,
 	onAction,
 	onRefuse,
 	path,
+	requestType,
 	status,
 }: {
 	readonly busy: boolean;
+	readonly liveRecords: number;
 	readonly onAction: (path: string, body: unknown) => void;
 	readonly onRefuse: () => void;
 	readonly path: (suffix: string) => string;
+	readonly requestType: string | undefined;
 	readonly status: string | undefined;
 }) => (
 	<div className="dsar-actions dsar-actions-row">
@@ -158,7 +228,7 @@ const QueueActions = ({
 				onClick={() => onAction(path("/verification/request"), {})}
 				type="button"
 			>
-				Start verification
+				Match to Acme account
 			</button>
 		) : null}
 		{status === "verification_pending" ? (
@@ -168,7 +238,7 @@ const QueueActions = ({
 					onClick={() => onAction(path("/verification/approve"), {})}
 					type="button"
 				>
-					Confirm identity
+					Identity matches
 				</button>
 				<button
 					className="dsar-btn-secondary"
@@ -176,7 +246,7 @@ const QueueActions = ({
 					onClick={() => onAction(path("/verification/reject"), {})}
 					type="button"
 				>
-					Reject identity
+					Not this person
 				</button>
 			</>
 		) : null}
@@ -187,15 +257,15 @@ const QueueActions = ({
 					onClick={() => onAction(path("/fulfilment"), {})}
 					type="button"
 				>
-					Mark fulfilled
+					{fulfilLabel(requestType, liveRecords)}
 				</button>
 				<button
-					className="dsar-btn-secondary"
+					className="dsar-btn-danger"
 					disabled={busy}
 					onClick={onRefuse}
 					type="button"
 				>
-					Refuse
+					Refuse request
 				</button>
 			</>
 		) : null}
@@ -206,7 +276,7 @@ const QueueActions = ({
 				onClick={() => onAction(path("/closures"), {})}
 				type="button"
 			>
-				Close
+				Close request
 			</button>
 		) : null}
 	</div>
@@ -241,6 +311,12 @@ const QueueCard = ({
 	const jurisdiction = detail?.capture?.jurisdiction;
 	const path = (suffix: string) =>
 		`/requests/${encodeURIComponent(row.id)}${suffix}`;
+	const liveRecords =
+		person === null || person.user === null
+			? 0
+			: liveCount(person.sessions) +
+				liveCount(person.orders) +
+				(person.user.deletedAt === null ? 1 : 0);
 	return (
 		<li className="dsar-card">
 			<div className="dsar-card-head">
@@ -270,9 +346,11 @@ const QueueCard = ({
 			<AcmeRecords person={person} />
 			<QueueActions
 				busy={busy}
+				liveRecords={liveRecords}
 				onAction={onAction}
 				onRefuse={onRefuse}
 				path={path}
+				requestType={requestType}
 				status={status}
 			/>
 			{refuseOpen ? (
@@ -387,7 +465,8 @@ export const OperatorQueue = () => {
 		<div className="dsar-root dsar-root-wide">
 			<h1>Request queue</h1>
 			<p className="dsar-lede">
-				Open filings for this tenant. Verify identity, then fulfil or refuse.
+				Match the filer to an Acme account, then erase those rows. Deleted rows
+				stay in the table so you can check the webhook ran.
 			</p>
 			<div className="dsar-panel">
 				{alertMessage === null ? null : (
