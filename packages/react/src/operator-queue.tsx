@@ -163,6 +163,55 @@ const emptyHoldCopy = (
 	return "No product account for this email. There is nothing to disclose, correct, or erase.";
 };
 
+const identityUnlocked = (status: string | undefined): boolean =>
+	status === "in_progress" ||
+	status === "fulfilled" ||
+	status === "refused" ||
+	status === "closed";
+
+const IdentityStep = ({
+	filerEmail,
+	filerName,
+	person,
+	status,
+}: {
+	readonly filerEmail: string | undefined;
+	readonly filerName: string | undefined;
+	readonly person: AcmePerson | null;
+	readonly status: string | undefined;
+}) => {
+	if (status === "captured") {
+		return (
+			<p className="dsar-meta">
+				Look up whether {filerEmail ?? "this email"} has an Acme account. Do not
+				disclose or erase until you confirm it is the same person.
+			</p>
+		);
+	}
+	if (status !== "verification_pending") {
+		return null;
+	}
+	if (person === null || person.user === null) {
+		return (
+			<p className="dsar-empty">
+				No Acme account for {filerEmail ?? "this email"}. Refuse, or ask the
+				filer for another email.
+			</p>
+		);
+	}
+	return (
+		<div className="dsar-acme">
+			<p className="dsar-list-title">Is this the same person?</p>
+			<p className="dsar-meta">
+				Filer: {filerName ?? "unnamed"} · {filerEmail ?? "no email"}
+			</p>
+			<p className="dsar-meta">
+				Acme: {person.user.name} · {person.user.plan} plan · {person.user.email}
+			</p>
+		</div>
+	);
+};
+
 const AcmeRecords = ({
 	person,
 	requestFulfilled,
@@ -289,7 +338,7 @@ const QueueActions = ({
 				onClick={() => onAction(path("/verification/request"), {})}
 				type="button"
 			>
-				Match to Acme account
+				Look up this email
 			</button>
 		) : null}
 		{status === "verification_pending" ? (
@@ -299,7 +348,7 @@ const QueueActions = ({
 					onClick={() => onAction(path("/verification/approve"), {})}
 					type="button"
 				>
-					Identity matches
+					Yes, same person
 				</button>
 				<button
 					className="dsar-btn-secondary"
@@ -307,7 +356,7 @@ const QueueActions = ({
 					onClick={() => onAction(path("/verification/reject"), {})}
 					type="button"
 				>
-					Not this person
+					No, different person
 				</button>
 			</>
 		) : null}
@@ -474,6 +523,72 @@ const RefuseForm = ({
 	);
 };
 
+const EmailLine = ({ email }: { readonly email: string | undefined }) => {
+	if (email === undefined) {
+		return null;
+	}
+	return <p className="dsar-meta">{email}</p>;
+};
+
+const Quote = ({ text }: { readonly text: string | undefined }) => {
+	if (text === undefined) {
+		return null;
+	}
+	return <p className="dsar-quote">{text}</p>;
+};
+
+const UnlockedRecords = ({
+	person,
+	requestType,
+	status,
+}: {
+	readonly person: AcmePerson | null;
+	readonly requestType: string | undefined;
+	readonly status: string | undefined;
+}) => {
+	if (!identityUnlocked(status)) {
+		return null;
+	}
+	return (
+		<AcmeRecords
+			person={person}
+			requestFulfilled={status === "fulfilled"}
+			requestType={requestType}
+		/>
+	);
+};
+
+const CardHead = ({
+	jurisdiction,
+	requestType,
+	row,
+	status,
+}: {
+	readonly jurisdiction: string | undefined;
+	readonly requestType: string | undefined;
+	readonly row: QueueItem;
+	readonly status: string | undefined;
+}) => (
+	<div className="dsar-card-head">
+		<div className="dsar-item-main">
+			<strong>{who(row.requestor)}</strong>
+			<span className="dsar-meta">
+				{[
+					requestType,
+					jurisdiction,
+					formatWhen(row.receivedAt),
+					row.dueAt === undefined ? undefined : `due ${formatWhen(row.dueAt)}`,
+				]
+					.filter((part) => part !== undefined)
+					.join(" · ")}
+			</span>
+		</div>
+		{status === undefined ? null : (
+			<span className="dsar-status">{status}</span>
+		)}
+	</div>
+);
+
 const liveRecordCount = (person: AcmePerson | null): number => {
 	if (person === null || person.user === null) {
 		return 0;
@@ -520,34 +635,27 @@ const QueueCard = ({
 	const liveRecords = liveRecordCount(person);
 	return (
 		<li className="dsar-card">
-			<div className="dsar-card-head">
-				<div className="dsar-item-main">
-					<strong>{who(detail?.requestor ?? row.requestor)}</strong>
-					<span className="dsar-meta">
-						{[
-							requestType,
-							jurisdiction,
-							formatWhen(row.receivedAt),
-							row.dueAt === undefined
-								? undefined
-								: `due ${formatWhen(row.dueAt)}`,
-						]
-							.filter((part) => part !== undefined)
-							.join(" · ")}
-					</span>
-				</div>
-				{status === undefined ? null : (
-					<span className="dsar-status">{status}</span>
-				)}
-			</div>
-			{detail?.requestor?.email === undefined ? null : (
-				<p className="dsar-meta">{detail.requestor.email}</p>
-			)}
-			{text === undefined ? null : <p className="dsar-quote">{text}</p>}
-			<AcmeRecords
-				person={person}
-				requestFulfilled={status === "fulfilled"}
+			<CardHead
+				jurisdiction={jurisdiction}
 				requestType={requestType}
+				row={{
+					...row,
+					requestor: detail?.requestor ?? row.requestor,
+				}}
+				status={status}
+			/>
+			<EmailLine email={detail?.requestor?.email} />
+			<Quote text={text} />
+			<IdentityStep
+				filerEmail={detail?.requestor?.email ?? row.requestor?.email}
+				filerName={detail?.requestor?.name ?? row.requestor?.name}
+				person={person}
+				status={status}
+			/>
+			<UnlockedRecords
+				person={person}
+				requestType={requestType}
+				status={status}
 			/>
 			<CorrectionSlot
 				busy={busy}
@@ -728,8 +836,9 @@ export const OperatorQueue = () => {
 		<div className="dsar-root dsar-root-wide">
 			<h1>Request queue</h1>
 			<p className="dsar-lede">
-				Match the filer to an Acme account, then disclose, correct, export, or
-				erase depending on the request type.
+				Confirm the filer owns the Acme account, then disclose, correct, export,
+				or erase. Full product data stays hidden until you say it is the same
+				person.
 			</p>
 			<div className="dsar-panel">
 				{alertMessage === null ? null : (
