@@ -92,6 +92,13 @@ For framework-neutral dispatch, call `client.webhooks.receiver(options)` or
 same `handlers` map, and the returned receiver also supports `.on(eventType,
 handler)` registration.
 
+The receiver and framework adapters take exactly one `signingSecret`. After
+`client.webhooks.rotateKey`, dispatch signs with the new primary immediately, so
+a single-secret receiver returns 401 until you deploy the new secret. During the
+grace window, verify with `verifyWebhook({ body, signature, keyId, secrets })`
+from `@dsar/node-sdk/webhooks`, passing every active secret and the
+`x-dsar-signature-key-id` header.
+
 ## `@dsar/cli`
 
 Use the CLI for operational access and parity with the HTTP contract.
