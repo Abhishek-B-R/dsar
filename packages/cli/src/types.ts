@@ -94,6 +94,12 @@ export interface CommandExecutionContext {
  * Registry definition for a CLI command.
  */
 export interface CommandDefinition {
+	/**
+	 * Preformatted command-specific flag lines for per-command `--help`.
+	 * Global `--help` still prints usage and description only. Example:
+	 * `"--request <id>          Request id to tail (required)"`.
+	 */
+	readonly flagHelp?: readonly string[];
 	/** Stable command identifier used in registry/help tooling. */
 	readonly id: string;
 	/** Optional route parity id linking command to HTTP surface. */
@@ -120,4 +126,10 @@ export interface RouteParityDefinition {
 	readonly command: readonly string[];
 	/** Human-readable parity mapping description. */
 	readonly description: string;
+	/**
+	 * Preformatted command-specific flag lines for per-command `--help`.
+	 * Global `--help` still prints usage and description only. Example:
+	 * `"--status <status>        Filter by delivery status"`.
+	 */
+	readonly flagHelp?: readonly string[];
 }
