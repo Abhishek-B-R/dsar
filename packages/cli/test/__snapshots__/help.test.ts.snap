@@ -1038,6 +1038,76 @@ Global flags:
   --json '<payload>'       JSON body payload for POST/PUT commands"
 `;
 
+exports[`CLI help output > matches command help snapshot for 'webhooks_dispatches_list' 1`] = `
+"DSAR CLI
+
+Usage:
+  dsar webhooks list [global flags]
+
+Description:
+  List outbound webhook dispatches.
+
+Command flags:
+  --status <statuses>      Comma-separated delivery statuses (e.g. failed)
+  --endpoint-id <id>       Filter by configured webhook endpoint id
+  --created-after <iso>    Only include attempts created after this time
+  --created-before <iso>   Only include attempts created before this time
+  --limit <n>              Page size, 1-500 (default 50)
+  --offset <n>             Zero-based page offset
+
+Global flags:
+  --api-url <url>          Override DSAR_API_URL
+  --token <token>          Override DSAR_API_TOKEN
+  --idempotency-key <key>  Set x-idempotency-key header
+  --output <mode>          text|json
+  --json '<payload>'       JSON body payload for POST/PUT commands"
+`;
+
+exports[`CLI help output > matches command help snapshot for 'webhooks_dispatches_replay' 1`] = `
+"DSAR CLI
+
+Usage:
+  dsar webhooks replay :id [global flags]
+
+Description:
+  Replay outbound webhook dispatch.
+
+Command flags:
+  --idempotency-key <key>  Replay dedupe key (required)
+
+Global flags:
+  --api-url <url>          Override DSAR_API_URL
+  --token <token>          Override DSAR_API_TOKEN
+  --idempotency-key <key>  Set x-idempotency-key header
+  --output <mode>          text|json
+  --json '<payload>'       JSON body payload for POST/PUT commands"
+`;
+
+exports[`CLI help output > matches command help snapshot for 'webhooks_dispatches_replay_bulk' 1`] = `
+"DSAR CLI
+
+Usage:
+  dsar webhooks replay-all [global flags]
+
+Description:
+  Replay failed outbound webhook dispatches.
+
+Command flags:
+  --idempotency-key <key>  Bulk replay dedupe key (required)
+  --status <status>        Must be 'failed' when present
+  --endpoint-id <id>       Filter by configured webhook endpoint id
+  --created-after <iso>    Only replay attempts created after this time
+  --created-before <iso>   Only replay attempts created before this time
+  --limit <n>              Maximum dispatches to replay, 1-100
+
+Global flags:
+  --api-url <url>          Override DSAR_API_URL
+  --token <token>          Override DSAR_API_TOKEN
+  --idempotency-key <key>  Set x-idempotency-key header
+  --output <mode>          text|json
+  --json '<payload>'       JSON body payload for POST/PUT commands"
+`;
+
 exports[`CLI help output > matches command help snapshot for 'webhooks_endpoint_rotate_key' 1`] = `
 "DSAR CLI
 
@@ -1080,6 +1150,31 @@ Usage:
 
 Description:
   Handle inbound Slack webhook payload.
+
+Global flags:
+  --api-url <url>          Override DSAR_API_URL
+  --token <token>          Override DSAR_API_TOKEN
+  --idempotency-key <key>  Set x-idempotency-key header
+  --output <mode>          text|json
+  --json '<payload>'       JSON body payload for POST/PUT commands"
+`;
+
+exports[`CLI help output > matches command help snapshot for 'webhooks_tail' 1`] = `
+"DSAR CLI
+
+Usage:
+  dsar webhooks tail [global flags]
+
+Description:
+  Stream outbound webhook dispatches.
+
+Command flags:
+  --status <statuses>      Comma-separated delivery statuses (e.g. failed)
+  --endpoint-id <id>       Filter by configured webhook endpoint id
+  --created-after <iso>    Start tailing after this timestamp
+  --interval <ms>          Poll interval in milliseconds (default 2000)
+  --limit <n>              Page size per poll, 1-500 (default 200)
+  --once                   Poll once and exit
 
 Global flags:
   --api-url <url>          Override DSAR_API_URL
@@ -1159,6 +1254,10 @@ Commands:
   webhooks inbound resend  - Handle inbound Resend webhook payload.
   webhooks inbound slack  - Handle inbound Slack webhook payload.
   webhooks rotate-key :id  - Rotate webhook endpoint signing key.
+  webhooks list  - List outbound webhook dispatches.
+  webhooks replay :id  - Replay outbound webhook dispatch.
+  webhooks replay-all  - Replay failed outbound webhook dispatches.
+  webhooks tail  - Stream outbound webhook dispatches.
   tenants retention get :tenantId  - Get tenant retention.
   tenants retention put :tenantId  - Set tenant retention.
   audit list  - List audit events with filters.
