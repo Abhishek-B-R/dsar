@@ -136,10 +136,11 @@ Supported query parameters:
 Node SDK:
 
 ```ts
-const dispatches = await client.webhooks.listDispatches({
+const listed = await client.webhooks.listDispatches({
 	status: "failed",
 	limit: 50,
 });
+const dispatches = listed.unwrap();
 ```
 
 ## POST /webhooks/dispatches/{id}/replay
@@ -176,9 +177,10 @@ sending again; use a new key for another recovery attempt.
 Node SDK:
 
 ```ts
-const replay = await client.webhooks.replayDispatch("dispatch-123", {
+const replayed = await client.webhooks.replayDispatch("dispatch-123", {
 	idempotencyKey: "incident-2026-08-30-dispatch-123",
 });
+const replay = replayed.unwrap();
 ```
 
 ## POST /webhooks/dispatches/replay
@@ -247,8 +249,9 @@ dispatch.
 Node SDK:
 
 ```ts
-const replay = await client.webhooks.replayDispatches(
+const replayed = await client.webhooks.replayDispatches(
 	{ status: "failed", endpoint_id: "default", limit: 100 },
 	{ idempotencyKey: "incident-2026-08-30" }
 );
+const replay = replayed.unwrap();
 ```

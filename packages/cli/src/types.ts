@@ -95,7 +95,8 @@ export interface CommandExecutionContext {
  */
 export interface CommandDefinition {
 	/**
-	 * Preformatted command-specific flag lines rendered by `--help`, e.g.
+	 * Preformatted command-specific flag lines for per-command `--help`.
+	 * Global `--help` still prints usage and description only. Example:
 	 * `"--request <id>          Request id to tail (required)"`.
 	 */
 	readonly flagHelp?: readonly string[];
@@ -126,7 +127,8 @@ export interface RouteParityDefinition {
 	/** Human-readable parity mapping description. */
 	readonly description: string;
 	/**
-	 * Preformatted command-specific flag lines rendered by `--help`, e.g.
+	 * Preformatted command-specific flag lines for per-command `--help`.
+	 * Global `--help` still prints usage and description only. Example:
 	 * `"--status <status>        Filter by delivery status"`.
 	 */
 	readonly flagHelp?: readonly string[];
