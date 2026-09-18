@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import * as HttpApiEndpoint from "effect/unstable/httpapi/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/unstable/httpapi/HttpApiGroup";
 
+import { PolicyUpgradeBodySchema } from "../../routes/schemas";
 import { protectedOperation, s200, s202 } from "../common";
 import { successEnvelope } from "../schemas";
 
@@ -64,6 +65,7 @@ export const policiesGroup = HttpApiGroup.make("policies", { topLevel: true })
 				"policies_upgrades_propose",
 				"/policies/upgrades/propose",
 				{
+					payload: PolicyUpgradeBodySchema,
 					success: successEnvelope(
 						Schema.Struct({
 							proposalId: Schema.String,

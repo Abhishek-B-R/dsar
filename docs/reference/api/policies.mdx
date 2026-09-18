@@ -31,9 +31,20 @@ List policy packs visible to the current request context.
 
 Create a policy-upgrade proposal.
 
-The current OpenAPI contract does not declare a required request body for this
-endpoint. Treat it as a workflow trigger that creates a new proposal and returns
-the proposal ID and status.
+**Request body:**
+
+- `fromVersion` (string, required)
+- `tenantId` (string, required): must match the authenticated tenant context
+- `toVersion` (string, required)
+- `workspaceId` (string, optional)
+
+```json
+{
+	"fromVersion": "1.0.0",
+	"tenantId": "tenant-1",
+	"toVersion": "1.1.0"
+}
+```
 
 **Response (202):**
 

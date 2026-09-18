@@ -11,15 +11,31 @@ This document defines the T04 policy lifecycle model for immutable versioning, s
 ## Components
 
 - `@dsar/policy-packs`: Registry, pinning resolution, legal-impact diffing, proposal workflow, and audit events.
-- `@dsar/backend`: Route handler stubs for `propose`, `approve`, and `apply` operations.
+- `@dsar/backend`: Live HTTP routes for listing packs, proposing/approving/applying upgrades, and custom pack register/activate/deactivate.
 
 ## Lifecycle
 
 1. Publish policy version into immutable registry (`name`, `jurisdiction`, `version`, `checksum`, `publishedAt`).
-2. Propose tenant/workspace upgrade from `fromVersion` to `toVersion`.
+2. Propose tenant/workspace upgrade from `fromVersion` to `toVersion` via `POST /policies/upgrades/propose`.
 3. Review categorized diff output (deadline/verification/appeals/retention/communication).
-4. Approver with role `admin` or `compliance_admin` approves proposal.
-5. Apply atomically updates pin to target version and emits audit event.
+4. Approver with role `admin` or `compliance_admin` calls `POST /policies/upgrades/:proposalId/approve`.
+5. Apply via `POST /policies/upgrades/:proposalId/apply` updates the pin to the target version and emits an audit event.
+
+Pinning a custom pack to a tenant or workspace is `POST /policies/custom/activate`. There is no reject route and no GET pack-by-id.
+
+## Example
+
+Propose a tenant upgrade from `1.0.0` to `1.1.0`:
+
+```json
+{
+	"fromVersion": "1.0.0",
+	"tenantId": "tenant-acme",
+	"toVersion": "1.1.0"
+}
+```
+
+The 202 response includes the proposal id, `pending_approval` status, and the categorized `diff` computed by `PolicyPackDiff`. Approve, then apply, using that proposal id.
 
 ## Diff Expectations
 
