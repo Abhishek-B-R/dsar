@@ -38,16 +38,37 @@ export const OperatorQueue = () => {
 	}, [refresh]);
 
 	return (
-		<section>
+		<div className="dsar-root">
 			<h1>Request queue</h1>
-			{alertMessage === null ? null : <p role="alert">{alertMessage}</p>}
-			<ul>
-				{rows.map((row) => (
-					<li key={row.id}>
-						{row.id} {row.status ?? ""} {row.jurisdiction ?? ""}
-					</li>
-				))}
-			</ul>
-		</section>
+			<p className="dsar-lede">
+				Open requests for this tenant. Fulfilment and refusals stay in the
+				operator tools on inth.com.
+			</p>
+			<div className="dsar-panel">
+				{alertMessage === null ? null : (
+					<p className="dsar-alert" role="alert">
+						{alertMessage}
+					</p>
+				)}
+				{rows.length === 0 ? (
+					<p className="dsar-empty">
+						The queue is empty. New subject filings will show up here.
+					</p>
+				) : (
+					<ul className="dsar-list">
+						{rows.map((row) => (
+							<li className="dsar-item" key={row.id}>
+								<span className="dsar-id" title={row.id}>
+									{row.id}
+								</span>
+								{row.status === undefined ? null : (
+									<span className="dsar-status">{row.status}</span>
+								)}
+							</li>
+						))}
+					</ul>
+				)}
+			</div>
+		</div>
 	);
 };

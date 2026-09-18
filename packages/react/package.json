@@ -5,7 +5,8 @@
 	"description": "React provider, hosted transport, and portal components for DSAR.",
 	"license": "Apache-2.0",
 	"files": [
-		"src"
+		"src",
+		"styles.css"
 	],
 	"type": "module",
 	"imports": {
@@ -16,7 +17,8 @@
 		".": {
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
-		}
+		},
+		"./styles.css": "./styles.css"
 	},
 	"scripts": {
 		"format": "oxfmt --check src test package.json tsconfig.json README.md",

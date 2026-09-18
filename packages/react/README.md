@@ -31,4 +31,6 @@ import { DsarProvider, SubjectPortal, selfHosted } from "@dsar/react";
 </DsarProvider>
 ```
 
+Styles: `import "@dsar/react/styles.css"`.
+
 See `examples/kitchen-sink`, `examples/subject-portal`, and `examples/dashboard`.
