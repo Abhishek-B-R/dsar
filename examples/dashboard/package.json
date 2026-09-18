@@ -5,8 +5,7 @@
 	"scripts": {
 		"dev": "next dev --port 1357",
 		"build": "next build",
-		"start": "next start --port 1357",
-		"typecheck": "tsc --noEmit"
+		"start": "next start --port 1357"
 	},
 	"dependencies": {
 		"@dsar/react": "workspace:*",
