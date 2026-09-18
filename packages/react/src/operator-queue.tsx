@@ -74,19 +74,25 @@ const intakeText = (detail: RequestDetail | undefined): string | undefined => {
 	return undefined;
 };
 
+interface AcmeSlice<T> {
+	readonly live: number;
+	readonly preview: readonly T[];
+	readonly total: number;
+}
+
 interface AcmePerson {
-	readonly orders: readonly {
+	readonly orders: AcmeSlice<{
 		readonly amountCents: number;
 		readonly createdAt: string;
 		readonly deletedAt: string | null;
 		readonly sku: string;
-	}[];
-	readonly sessions: readonly {
+	}>;
+	readonly sessions: AcmeSlice<{
 		readonly deletedAt: string | null;
 		readonly id: string;
 		readonly ip: string;
 		readonly lastSeen: string;
-	}[];
+	}>;
 	readonly user: {
 		readonly deletedAt: string | null;
 		readonly email: string;
@@ -94,9 +100,6 @@ interface AcmePerson {
 		readonly plan: string;
 	} | null;
 }
-
-const liveCount = (rows: readonly { readonly deletedAt: string | null }[]) =>
-	rows.filter((row) => row.deletedAt === null).length;
 
 const fulfilLabel = (requestType: string | undefined, liveRecords: number) => {
 	if (requestType === "delete" && liveRecords > 0) {
@@ -127,10 +130,10 @@ const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
 			</div>
 		);
 	}
-	const liveSessions = liveCount(person.sessions);
-	const liveOrders = liveCount(person.orders);
 	const liveTotal =
-		liveSessions + liveOrders + (person.user.deletedAt === null ? 1 : 0);
+		person.sessions.live +
+		person.orders.live +
+		(person.user.deletedAt === null ? 1 : 0);
 	const erased = liveTotal === 0;
 	return (
 		<div className="dsar-acme">
@@ -145,11 +148,14 @@ const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
 			) : (
 				<p className="dsar-meta">
 					{String(liveTotal)} live record{liveTotal === 1 ? "" : "s"} will be
-					erased when you fulfil a delete request.
+					erased. Tables show a preview, not the full store.
 				</p>
 			)}
 			<table className="dsar-table">
-				<caption className="dsar-table-caption">Sessions</caption>
+				<caption className="dsar-table-caption">
+					Sessions · {String(person.sessions.preview.length)} of{" "}
+					{String(person.sessions.total)}
+				</caption>
 				<thead>
 					<tr>
 						<th scope="col">ID</th>
@@ -159,7 +165,7 @@ const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
 					</tr>
 				</thead>
 				<tbody>
-					{person.sessions.map((session) => (
+					{person.sessions.preview.map((session) => (
 						<tr
 							className={
 								session.deletedAt === null ? undefined : "dsar-row-gone"
@@ -175,7 +181,10 @@ const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
 				</tbody>
 			</table>
 			<table className="dsar-table">
-				<caption className="dsar-table-caption">Orders</caption>
+				<caption className="dsar-table-caption">
+					Orders · {String(person.orders.preview.length)} of{" "}
+					{String(person.orders.total)}
+				</caption>
 				<thead>
 					<tr>
 						<th scope="col">SKU</th>
@@ -187,7 +196,7 @@ const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
 					</tr>
 				</thead>
 				<tbody>
-					{person.orders.map((order) => (
+					{person.orders.preview.map((order) => (
 						<tr
 							className={order.deletedAt === null ? undefined : "dsar-row-gone"}
 							key={order.id}
@@ -314,8 +323,8 @@ const QueueCard = ({
 	const liveRecords =
 		person === null || person.user === null
 			? 0
-			: liveCount(person.sessions) +
-				liveCount(person.orders) +
+			: person.sessions.live +
+				person.orders.live +
 				(person.user.deletedAt === null ? 1 : 0);
 	return (
 		<li className="dsar-card">

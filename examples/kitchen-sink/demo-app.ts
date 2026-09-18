@@ -23,11 +23,19 @@ export interface DemoOrder {
 	readonly sku: string;
 }
 
+export interface DemoSlice<T> {
+	readonly live: number;
+	readonly preview: readonly T[];
+	readonly total: number;
+}
+
 export interface DemoPerson {
-	readonly orders: readonly DemoOrder[];
-	readonly sessions: readonly DemoSession[];
+	readonly orders: DemoSlice<DemoOrder>;
+	readonly sessions: DemoSlice<DemoSession>;
 	readonly user: DemoUser | null;
 }
+
+const PREVIEW_LIMIT = 5;
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -130,6 +138,19 @@ export const openDemoApp = (filename: string) => {
 		}
 	}
 
+	const countSessions = db.prepare(
+		"SELECT COUNT(*) AS n FROM sessions WHERE lower(email) = ?"
+	);
+	const countLiveSessions = db.prepare(
+		"SELECT COUNT(*) AS n FROM sessions WHERE lower(email) = ? AND deleted_at IS NULL"
+	);
+	const countOrders = db.prepare(
+		"SELECT COUNT(*) AS n FROM orders WHERE lower(email) = ?"
+	);
+	const countLiveOrders = db.prepare(
+		"SELECT COUNT(*) AS n FROM orders WHERE lower(email) = ? AND deleted_at IS NULL"
+	);
+
 	const lookupByEmail = (email: string): DemoPerson => {
 		const normalized = email.trim().toLowerCase();
 		const user = db
@@ -137,19 +158,35 @@ export const openDemoApp = (filename: string) => {
 				"SELECT email, name, plan, created_at AS createdAt, deleted_at AS deletedAt FROM users WHERE lower(email) = ?"
 			)
 			.get(normalized) as DemoUser | undefined;
+		const sessionCounts = {
+			live: (countLiveSessions.get(normalized) as { n: number }).n,
+			total: (countSessions.get(normalized) as { n: number }).n,
+		};
+		const orderCounts = {
+			live: (countLiveOrders.get(normalized) as { n: number }).n,
+			total: (countOrders.get(normalized) as { n: number }).n,
+		};
 		const sessions = db
 			.prepare(
-				"SELECT id, ip, last_seen AS lastSeen, deleted_at AS deletedAt FROM sessions WHERE lower(email) = ? ORDER BY last_seen DESC"
+				"SELECT id, ip, last_seen AS lastSeen, deleted_at AS deletedAt FROM sessions WHERE lower(email) = ? ORDER BY last_seen DESC LIMIT ?"
 			)
-			.all(normalized) as DemoSession[];
+			.all(normalized, PREVIEW_LIMIT) as DemoSession[];
 		const orders = db
 			.prepare(
-				"SELECT id, sku, amount_cents AS amountCents, created_at AS createdAt, deleted_at AS deletedAt FROM orders WHERE lower(email) = ? ORDER BY created_at DESC"
+				"SELECT id, sku, amount_cents AS amountCents, created_at AS createdAt, deleted_at AS deletedAt FROM orders WHERE lower(email) = ? ORDER BY created_at DESC LIMIT ?"
 			)
-			.all(normalized) as DemoOrder[];
+			.all(normalized, PREVIEW_LIMIT) as DemoOrder[];
 		return {
-			orders,
-			sessions,
+			orders: {
+				live: orderCounts.live,
+				preview: orders,
+				total: orderCounts.total,
+			},
+			sessions: {
+				live: sessionCounts.live,
+				preview: sessions,
+				total: sessionCounts.total,
+			},
 			user: user ?? null,
 		};
 	};
