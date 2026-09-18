@@ -20,7 +20,8 @@ for the current DSAR repo state.
 
 ## Current evidence in repo
 
-- API lifecycle E2E coverage exists in `packages/backend/test/e2e/full-flow.api.e2e.test.ts`.
+- API lifecycle E2E coverage exists in `packages/backend/test/e2e/full-flow.api.e2e.test.ts`. Those tests use the stub harness (in-memory persistence, stub adapters).
+- Real SQLite file plus filesystem storage coverage exists in `packages/backend/test/e2e/sqlite-filesystem.api.e2e.test.ts`. See [Real adapter e2e](/docs/reference/testing/real-adapters).
 - Route-level lifecycle coverage exists in `packages/backend/test/routes/requests-lifecycle.test.ts`.
 - Notification retry and built-in email behavior are covered in `packages/backend/test/services/notifications.service.test.ts`.
 - CLI/backend parity is guarded by `packages/cli/test/parity.test.ts` and `packages/cli/test/e2e/parity-guard.e2e.test.ts`.

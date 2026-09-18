@@ -218,7 +218,7 @@ export default defineDocsConfig({
 				},
 				{
 					base: "testing",
-					pages: ["acceptance-and-parity"],
+					pages: ["acceptance-and-parity", "real-adapters"],
 					title: "Testing",
 				},
 				{

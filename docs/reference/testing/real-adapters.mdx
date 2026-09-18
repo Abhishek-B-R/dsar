@@ -1,0 +1,64 @@
+---
+title: "Real Adapter E2E"
+description: "How to run the SQLite file plus filesystem storage lifecycle against real adapters, and how that path differs from the stub HTTP harness."
+group: reference-testing
+---
+
+<include src="../../_shared/alpha-warning.mdx" />
+
+Most backend HTTP tests use in-memory persistence and stub adapters. That is
+fast enough for route and lifecycle coverage, but it is not an e2e path: nothing
+hits SQLite serialization or a real storage client.
+
+The real-adapter e2e is one cell only: a SQLite file from
+`@dsar/persistence-sqlite` plus `@dsar/storage-filesystem`. It does not need
+Docker. It does not start Postgres, S3, MinIO, or Resend.
+
+## What it covers
+
+`packages/backend/test/e2e/sqlite-filesystem.api.e2e.test.ts` starts a real
+`node:http` server, then runs capture → verification request → binary evidence
+upload → verification approve → fulfilment.
+
+After the HTTP flow it:
+
+- Reads the uploaded evidence bytes from the filesystem directory
+- Reopens the same SQLite file and loads the request through persistence
+- Starts a second HTTP server on that file and `GET`s the fulfilled request
+
+Inbound and notification adapters stay stub. The default harness in
+`packages/backend/test/e2e/harness.ts` is unchanged, so existing tests still use
+memory persistence and stub storage.
+
+## How to run it
+
+The test is part of the default backend Vitest run, so CI already executes it:
+
+```sh
+bun run --cwd packages/backend test
+```
+
+Focused:
+
+```sh
+bun run --cwd packages/backend test test/e2e/sqlite-filesystem.api.e2e.test.ts
+```
+
+All HTTP e2e files, including the stub-harness flows:
+
+```sh
+bun run --cwd packages/backend test:e2e
+```
+
+No extra environment variables are required. The test writes a temporary SQLite
+file and artifact directory under the OS temp dir and deletes them when it
+finishes.
+
+Postgres driver tests still skip unless `DSAR_TEST_PG_URL` is set. That is a
+separate package (`@dsar/persistence-pg`), not this e2e path.
+
+## Related
+
+- [Acceptance and parity](/docs/reference/testing/acceptance-and-parity)
+- [SQLite persistence](/docs/reference/persistence/sqlite)
+- [Filesystem storage](/docs/reference/storage/filesystem)

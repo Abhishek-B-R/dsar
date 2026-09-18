@@ -97,6 +97,12 @@ const writeWebResponse = async (
 	outgoing.end(responseBuffer);
 };
 
+/**
+ * Starts a real `node:http` server around `dsarInstance`.
+ *
+ * Defaults stay on in-memory persistence and stub adapters so HTTP lifecycle
+ * tests stay fast. Pass `persistence` and `adapters` to exercise real drivers.
+ */
 export const startApiE2eServer = async (
 	options: ApiE2eServerOptions = {}
 ): Promise<ApiE2eServer> => {
