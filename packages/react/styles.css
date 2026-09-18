@@ -278,6 +278,23 @@
 	border-radius: calc(var(--dsar-radius) - 8px);
 }
 
+.dsar-acme {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 0.75rem 0.8rem;
+	background: var(--dsar-surface);
+	border: 1px dashed var(--dsar-border);
+	border-radius: calc(var(--dsar-radius) - 8px);
+}
+
+.dsar-acme-counts {
+	margin: 0;
+	padding-left: 1.1rem;
+	color: var(--dsar-ink);
+	font-size: 0.875rem;
+}
+
 .dsar-id {
 	overflow-wrap: anywhere;
 	font-family: var(--dsar-mono);

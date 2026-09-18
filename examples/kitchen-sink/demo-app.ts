@@ -1,0 +1,187 @@
+import { Database } from "bun:sqlite";
+
+export interface DemoUser {
+	readonly createdAt: string;
+	readonly deletedAt: string | null;
+	readonly email: string;
+	readonly name: string;
+	readonly plan: string;
+}
+
+export interface DemoSession {
+	readonly deletedAt: string | null;
+	readonly id: string;
+	readonly ip: string;
+	readonly lastSeen: string;
+}
+
+export interface DemoOrder {
+	readonly amountCents: number;
+	readonly createdAt: string;
+	readonly deletedAt: string | null;
+	readonly id: string;
+	readonly sku: string;
+}
+
+export interface DemoPerson {
+	readonly orders: readonly DemoOrder[];
+	readonly sessions: readonly DemoSession[];
+	readonly user: DemoUser | null;
+}
+
+const nowIso = (): string => new Date().toISOString();
+
+const seedRows = [
+	{
+		email: "ada@example.com",
+		name: "Ada Lovelace",
+		orders: [
+			{ amountCents: 4200, sku: "ANALYTICAL-ENGINE" },
+			{ amountCents: 1900, sku: "NOTEBOOK-G" },
+		],
+		plan: "pro",
+		sessions: 2,
+	},
+	{
+		email: "kaylee@kaylee.dev",
+		name: "Kaylee Williams",
+		orders: [
+			{ amountCents: 2900, sku: "STUDIO-PLAN" },
+			{ amountCents: 800, sku: "ADD-ON-SEATS" },
+		],
+		plan: "team",
+		sessions: 1,
+	},
+	{
+		email: "subject@example.com",
+		name: "Portal Demo Subject",
+		orders: [{ amountCents: 1200, sku: "STARTER" }],
+		plan: "free",
+		sessions: 1,
+	},
+	{
+		email: "sam@example.com",
+		name: "Sam Rivera",
+		orders: [{ amountCents: 5400, sku: "ENTERPRISE" }],
+		plan: "enterprise",
+		sessions: 3,
+	},
+] as const;
+
+export const openDemoApp = (filename: string) => {
+	const db = new Database(filename, { create: true });
+	db.exec(`
+		CREATE TABLE IF NOT EXISTS users (
+			email TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			plan TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			deleted_at TEXT
+		);
+		CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			email TEXT NOT NULL,
+			ip TEXT NOT NULL,
+			last_seen TEXT NOT NULL,
+			deleted_at TEXT
+		);
+		CREATE TABLE IF NOT EXISTS orders (
+			id TEXT PRIMARY KEY,
+			email TEXT NOT NULL,
+			sku TEXT NOT NULL,
+			amount_cents INTEGER NOT NULL,
+			created_at TEXT NOT NULL,
+			deleted_at TEXT
+		);
+	`);
+	const userCount = db.prepare("SELECT COUNT(*) AS n FROM users").get() as {
+		n: number;
+	};
+	if (userCount.n === 0) {
+		const insertUser = db.prepare(
+			"INSERT INTO users (email, name, plan, created_at, deleted_at) VALUES (?, ?, ?, ?, NULL)"
+		);
+		const insertSession = db.prepare(
+			"INSERT INTO sessions (id, email, ip, last_seen, deleted_at) VALUES (?, ?, ?, ?, NULL)"
+		);
+		const insertOrder = db.prepare(
+			"INSERT INTO orders (id, email, sku, amount_cents, created_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)"
+		);
+		const createdAt = nowIso();
+		for (const [index, person] of seedRows.entries()) {
+			insertUser.run(person.email, person.name, person.plan, createdAt);
+			for (let session = 0; session < person.sessions; session += 1) {
+				insertSession.run(
+					`ses_${index}_${session}`,
+					person.email,
+					`203.0.113.${String(10 + index + session)}`,
+					createdAt
+				);
+			}
+			for (const [orderIndex, order] of person.orders.entries()) {
+				insertOrder.run(
+					`ord_${index}_${orderIndex}`,
+					person.email,
+					order.sku,
+					order.amountCents,
+					createdAt
+				);
+			}
+		}
+	}
+
+	const lookupByEmail = (email: string): DemoPerson => {
+		const normalized = email.trim().toLowerCase();
+		const user = db
+			.prepare(
+				"SELECT email, name, plan, created_at AS createdAt, deleted_at AS deletedAt FROM users WHERE lower(email) = ?"
+			)
+			.get(normalized) as DemoUser | undefined;
+		const sessions = db
+			.prepare(
+				"SELECT id, ip, last_seen AS lastSeen, deleted_at AS deletedAt FROM sessions WHERE lower(email) = ? ORDER BY last_seen DESC"
+			)
+			.all(normalized) as DemoSession[];
+		const orders = db
+			.prepare(
+				"SELECT id, sku, amount_cents AS amountCents, created_at AS createdAt, deleted_at AS deletedAt FROM orders WHERE lower(email) = ? ORDER BY created_at DESC"
+			)
+			.all(normalized) as DemoOrder[];
+		return {
+			orders,
+			sessions,
+			user: user ?? null,
+		};
+	};
+
+	const eraseByEmail = (email: string): { readonly deleted: number } => {
+		const normalized = email.trim().toLowerCase();
+		const deletedAt = nowIso();
+		const users = db
+			.prepare(
+				"UPDATE users SET deleted_at = ? WHERE lower(email) = ? AND deleted_at IS NULL"
+			)
+			.run(deletedAt, normalized);
+		const sessions = db
+			.prepare(
+				"UPDATE sessions SET deleted_at = ? WHERE lower(email) = ? AND deleted_at IS NULL"
+			)
+			.run(deletedAt, normalized);
+		const orders = db
+			.prepare(
+				"UPDATE orders SET deleted_at = ? WHERE lower(email) = ? AND deleted_at IS NULL"
+			)
+			.run(deletedAt, normalized);
+		return {
+			deleted:
+				Number(users.changes) +
+				Number(sessions.changes) +
+				Number(orders.changes),
+		};
+	};
+
+	return { eraseByEmail, lookupByEmail };
+};
+
+export const demoPeoplePath = "/demo/people";
+export const demoWebhookPath = "/demo/webhooks/dsar";

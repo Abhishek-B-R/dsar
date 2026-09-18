@@ -4,6 +4,7 @@
 		"server.ts",
 		"runtime.config.ts",
 		"kitchen-sink.ts",
-		"local-ui.ts"
+		"local-ui.ts",
+		"demo-app.ts"
 	]
 }

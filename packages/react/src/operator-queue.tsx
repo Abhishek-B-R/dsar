@@ -74,6 +74,70 @@ const intakeText = (detail: RequestDetail | undefined): string | undefined => {
 	return undefined;
 };
 
+interface AcmePerson {
+	readonly orders: readonly {
+		readonly amountCents: number;
+		readonly deletedAt: string | null;
+		readonly sku: string;
+	}[];
+	readonly sessions: readonly {
+		readonly deletedAt: string | null;
+		readonly id: string;
+	}[];
+	readonly user: {
+		readonly deletedAt: string | null;
+		readonly email: string;
+		readonly name: string;
+		readonly plan: string;
+	} | null;
+}
+
+const liveCount = (rows: readonly { readonly deletedAt: string | null }[]) =>
+	rows.filter((row) => row.deletedAt === null).length;
+
+const demoPeopleUrl = (dsarBaseUrl: string, email: string): string => {
+	const origin = dsarBaseUrl.replace(/\/api\/v1\/?$/, "");
+	return `${origin}/demo/people?email=${encodeURIComponent(email)}`;
+};
+
+const AcmeRecords = ({ person }: { readonly person: AcmePerson | null }) => {
+	if (person === null) {
+		return <p className="dsar-empty">No Acme account for this email.</p>;
+	}
+	if (person.user === null) {
+		return <p className="dsar-empty">No Acme account for this email.</p>;
+	}
+	const liveSessions = liveCount(person.sessions);
+	const liveOrders = liveCount(person.orders);
+	const erased = person.user.deletedAt !== null;
+	return (
+		<div className="dsar-acme">
+			<p className="dsar-list-title">Acme product data</p>
+			<p className="dsar-meta">
+				{person.user.name} · {person.user.plan}
+				{erased ? " · erased" : ""}
+			</p>
+			<ul className="dsar-acme-counts">
+				<li>
+					{liveSessions} live session{liveSessions === 1 ? "" : "s"}
+					{person.sessions.length === liveSessions
+						? ""
+						: ` (${String(person.sessions.length - liveSessions)} deleted)`}
+				</li>
+				<li>
+					{liveOrders} live order{liveOrders === 1 ? "" : "s"}
+					{person.orders.length === liveOrders
+						? ""
+						: ` (${String(person.orders.length - liveOrders)} deleted)`}
+				</li>
+			</ul>
+			{erased ? (
+				<p className="dsar-empty">Fulfilment webhook erased this account.</p>
+			) : null}
+		</div>
+	);
+};
+
 const QueueActions = ({
 	busy,
 	onAction,
@@ -155,6 +219,7 @@ const QueueCard = ({
 	onRefuse,
 	onRefuseCancel,
 	onRefuseReason,
+	person,
 	refuseOpen,
 	refuseReason,
 	row,
@@ -165,6 +230,7 @@ const QueueCard = ({
 	readonly onRefuse: () => void;
 	readonly onRefuseCancel: () => void;
 	readonly onRefuseReason: (value: string) => void;
+	readonly person: AcmePerson | null;
 	readonly refuseOpen: boolean;
 	readonly refuseReason: string;
 	readonly row: QueueItem;
@@ -201,6 +267,7 @@ const QueueCard = ({
 				<p className="dsar-meta">{detail.requestor.email}</p>
 			)}
 			{text === undefined ? null : <p className="dsar-quote">{text}</p>}
+			<AcmeRecords person={person} />
 			<QueueActions
 				busy={busy}
 				onAction={onAction}
@@ -251,6 +318,9 @@ export const OperatorQueue = () => {
 	const [busyId, setBusyId] = useState<string | null>(null);
 	const [refuseId, setRefuseId] = useState<string | null>(null);
 	const [refuseReason, setRefuseReason] = useState("");
+	const [people, setPeople] = useState<
+		Readonly<Record<string, AcmePerson | null>>
+	>({});
 
 	const refresh = useCallback(async () => {
 		const listed = await client.get<{ readonly items?: readonly QueueItem[] }>(
@@ -267,6 +337,23 @@ export const OperatorQueue = () => {
 			})
 		);
 		setDetails(Object.fromEntries(loaded));
+		const lookedUp = await Promise.all(
+			loaded.map(async ([id, detail]) => {
+				const email = detail.requestor?.email ?? undefined;
+				if (email === undefined) {
+					return [id, null] as const;
+				}
+				const response = await fetch(demoPeopleUrl(client.baseUrl, email), {
+					credentials: "include",
+				});
+				if (!response.ok) {
+					return [id, null] as const;
+				}
+				const person = (await response.json()) as AcmePerson;
+				return [id, person] as const;
+			})
+		);
+		setPeople(Object.fromEntries(lookedUp));
 	}, [client]);
 
 	useEffect(() => {
@@ -340,6 +427,7 @@ export const OperatorQueue = () => {
 								}}
 								onRefuseCancel={() => setRefuseId(null)}
 								onRefuseReason={setRefuseReason}
+								person={people[row.id] ?? null}
 								refuseOpen={refuseId === row.id}
 								refuseReason={refuseReason}
 								row={row}
