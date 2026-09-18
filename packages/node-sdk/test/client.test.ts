@@ -1,6 +1,6 @@
 import { dsarInstance } from "@dsar/backend";
 import { makeMinimalPersistenceSync } from "@dsar/backend/testing/minimal-persistence";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect, it, vi } from "@effect/vitest";
 
 /* oxlint-disable max-statements, require-await, jest/max-expects */
 /* oxlint-disable jest/no-conditional-in-test */
@@ -203,6 +203,75 @@ describe("@dsar/node-sdk client", () => {
 		expect(list.unwrap().items).toHaveLength(0);
 	});
 
+	it("calls outbound webhook dispatch recovery endpoints", async () => {
+		const requests: { readonly body?: string; readonly request: Request }[] =
+			[];
+		const sdk = createNodeSdk({
+			baseUrl: "https://example.test/api/v1",
+			fetch: async (input, init) => {
+				const request = new Request(input, init);
+				const { pathname } = new URL(request.url);
+				requests.push({
+					body: init?.body?.toString(),
+					request,
+				});
+				let data: Readonly<Record<string, unknown>> = {
+					dispatchId: "dispatch/one",
+					eventId: "event-one",
+					status: "replayed",
+				};
+				if (pathname.endsWith("/webhooks/dispatches")) {
+					data = { items: [], limit: 20, offset: 5, total: 0 };
+				} else if (pathname.endsWith("/webhooks/dispatches/replay")) {
+					data = {
+						alreadyReplayed: 0,
+						replayed: 0,
+						results: [],
+						total: 0,
+					};
+				}
+				return Response.json({ data, ok: true });
+			},
+		});
+
+		const listed = await sdk.webhooks.listDispatches({
+			limit: 20,
+			offset: 5,
+			status: "failed,pending",
+		});
+		const replayed = await sdk.webhooks.replayDispatch("dispatch/one", {
+			idempotencyKey: "single-replay",
+		});
+		const bulkReplayed = await sdk.webhooks.replayDispatches(
+			{ endpoint_id: "default", limit: 10, status: "failed" },
+			{ idempotencyKey: "bulk-replay" }
+		);
+
+		expect(listed.unwrap().limit).toBe(20);
+		expect(replayed.unwrap().status).toBe("replayed");
+		expect(bulkReplayed.unwrap().total).toBe(0);
+		expect(requests.map(({ request }) => request.method)).toStrictEqual([
+			"GET",
+			"POST",
+			"POST",
+		]);
+		expect(requests[0]?.request.url).toBe(
+			"https://example.test/api/v1/webhooks/dispatches?limit=20&offset=5&status=failed%2Cpending"
+		);
+		expect(requests[1]?.request.url).toBe(
+			"https://example.test/api/v1/webhooks/dispatches/dispatch%2Fone/replay"
+		);
+		expect(requests[1]?.request.headers.get("x-idempotency-key")).toBe(
+			"single-replay"
+		);
+		expect(requests[2]?.request.headers.get("x-idempotency-key")).toBe(
+			"bulk-replay"
+		);
+		expect(requests[2]?.body).toBe(
+			'{"endpoint_id":"default","limit":10,"status":"failed"}'
+		);
+	});
+
 	it("classifies retriable status values", () => {
 		expect(isRetriableHttpStatus(429)).toBeTruthy();
 		expect(isRetriableHttpStatus(503)).toBeTruthy();
@@ -317,5 +386,48 @@ describe("@dsar/node-sdk client", () => {
 		expect(sdkError.type).toBe("dsar.sdk.error");
 		expect(sdkError.errorId).toBe("DSAR-BE-1199");
 		expect(sdkError.meta).toBeUndefined();
+	});
+
+	it("dispatches a webhook through sdk.webhooks.receiver()", async () => {
+		const sdk = createNodeSdk({
+			baseUrl: "http://localhost:3000/api/v1",
+			token: TEST_API_TOKEN,
+		});
+		const verify = vi.fn().mockResolvedValue();
+		const handler = vi.fn();
+		const receiver = sdk.webhooks.receiver({
+			handlers: { request_captured: handler },
+			signingSecret: "test-secret",
+			verify,
+		});
+		const rawBody = JSON.stringify({
+			correlationId: "corr_1",
+			eventId: "evt_1",
+			eventType: "request_captured",
+			idempotencyKey: "idem_1",
+			locale: "en-US",
+			payload: { source: "test" },
+			policyVersion: "2026.1",
+			requestId: "req_1",
+		});
+
+		const result = await receiver.handle({
+			rawBody,
+			signature: "valid-signature",
+		});
+
+		expect(verify).toHaveBeenCalledWith({
+			payload: rawBody,
+			signature: "valid-signature",
+			signingSecret: "test-secret",
+		});
+		expect(handler).toHaveBeenCalledWith(
+			expect.objectContaining({
+				eventId: "evt_1",
+				eventType: "request_captured",
+				requestId: "req_1",
+			})
+		);
+		expect(result).toEqual({ body: { ok: true }, status: 200 });
 	});
 });

@@ -41,6 +41,9 @@ const requiredPaths = [
 	"/webhooks/inbound/resend",
 	"/webhooks/endpoints/{id}/rotate-key",
 	"/status/diagnostics",
+	"/webhooks/dispatches",
+	"/webhooks/dispatches/replay",
+	"/webhooks/dispatches/{id}/replay",
 ] as const;
 
 describe("@dsar/node-sdk parity checks", () => {
@@ -98,6 +101,9 @@ describe("@dsar/node-sdk parity checks", () => {
 		expectTypeOf(sdk.diagnostics).toBeFunction();
 		expectTypeOf(sdk.init).toBeFunction();
 		expectTypeOf(sdk.webhooks.inboundResend).toBeFunction();
+		expectTypeOf(sdk.webhooks.listDispatches).toBeFunction();
+		expectTypeOf(sdk.webhooks.replayDispatch).toBeFunction();
+		expectTypeOf(sdk.webhooks.replayDispatches).toBeFunction();
 		expectTypeOf(sdk.webhooks.rotateKey).toBeFunction();
 	});
 });

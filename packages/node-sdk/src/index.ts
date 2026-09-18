@@ -39,3 +39,13 @@ export type {
 	WebhookInboundSlackPayload,
 	WebhookInboundSlackResponse,
 } from "./endpoints";
+export type {
+	WebhookDispatch,
+	WebhookDispatchBulkReplayPayload,
+	WebhookDispatchBulkReplayResponse,
+	WebhookDispatchListQuery,
+	WebhookDispatchListResponse,
+	WebhookDispatchReplayResponse,
+	WebhookDispatchStatus,
+	WebhookReplayRequestOptions,
+} from "./endpoints/webhooks";

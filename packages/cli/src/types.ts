@@ -97,7 +97,8 @@ export interface CommandDefinition {
 	/** Allows command parsing to continue without `--api-url` / `DSAR_API_URL`. */
 	readonly allowMissingApiUrl?: boolean;
 	/**
-	 * Preformatted command-specific flag lines rendered by `--help`, e.g.
+	 * Preformatted command-specific flag lines for per-command `--help`.
+	 * Global `--help` still prints usage and description only. Example:
 	 * `"--request <id>          Request id to tail (required)"`.
 	 */
 	readonly flagHelp?: readonly string[];
@@ -131,4 +132,10 @@ export interface RouteParityDefinition {
 	readonly command: readonly string[];
 	/** Human-readable parity mapping description. */
 	readonly description: string;
+	/**
+	 * Preformatted command-specific flag lines for per-command `--help`.
+	 * Global `--help` still prints usage and description only. Example:
+	 * `"--status <status>        Filter by delivery status"`.
+	 */
+	readonly flagHelp?: readonly string[];
 }
