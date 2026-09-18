@@ -1,3 +1,17 @@
+.dsar-page,
+.dsar-root {
+	--dsar-canvas: oklch(0.97 0.008 85);
+	--dsar-surface: oklch(0.995 0.004 85);
+	--dsar-ink: oklch(0.24 0.025 255);
+	--dsar-muted: oklch(0.48 0.02 255);
+	--dsar-accent: oklch(0.36 0.07 250);
+	--dsar-danger: oklch(0.5 0.14 25);
+	--dsar-border: color-mix(in oklch, var(--dsar-ink) 10%, transparent);
+	--dsar-sans: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+	--dsar-mono: ui-monospace, "SFMono-Regular", menlo, consolas, monospace;
+	--dsar-radius: 14px;
+}
+
 .dsar-page {
 	min-height: 100dvh;
 	margin: 0;
@@ -32,16 +46,6 @@
 }
 
 .dsar-root {
-	--dsar-canvas: oklch(0.97 0.008 85);
-	--dsar-surface: oklch(0.995 0.004 85);
-	--dsar-ink: oklch(0.24 0.025 255);
-	--dsar-muted: oklch(0.48 0.02 255);
-	--dsar-accent: oklch(0.36 0.07 250);
-	--dsar-danger: oklch(0.5 0.14 25);
-	--dsar-border: color-mix(in oklch, var(--dsar-ink) 10%, transparent);
-	--dsar-sans: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-	--dsar-mono: ui-monospace, "SFMono-Regular", menlo, consolas, monospace;
-	--dsar-radius: 14px;
 	box-sizing: border-box;
 	max-width: 44rem;
 	margin-inline: auto;
