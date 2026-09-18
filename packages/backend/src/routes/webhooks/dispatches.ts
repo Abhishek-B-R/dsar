@@ -223,6 +223,23 @@ const parseBulkReplayLimit = (
 	return Effect.succeed(value);
 };
 
+const parseBulkReplayStatus = (
+	status: string | undefined
+): Effect.Effect<"failed" | "dead", RequestValidationError> => {
+	if (status === undefined || status === "failed") {
+		return Effect.succeed("failed");
+	}
+	if (status === "dead") {
+		return Effect.succeed("dead");
+	}
+	return Effect.fail(
+		new RequestValidationError({
+			message: "Only failed or dead webhook dispatches can be replayed.",
+			reasonCode: "REQUEST_VALIDATION_FAILED",
+		})
+	);
+};
+
 const parseBulkReplayFilters = (
 	body: Readonly<Record<string, unknown>>
 ): Effect.Effect<
@@ -231,19 +248,14 @@ const parseBulkReplayFilters = (
 		readonly createdBefore?: string;
 		readonly endpointId?: string;
 		readonly limit: number;
+		readonly status: "failed" | "dead";
 	},
 	RequestValidationError
 > =>
 	Effect.gen(function* parseBulkReplayFiltersProgram() {
-		const status = yield* parseOptionalStringField(body, "status");
-		if (status !== undefined && status !== "failed") {
-			return yield* Effect.fail(
-				new RequestValidationError({
-					message: "Only failed webhook dispatches can be replayed.",
-					reasonCode: "REQUEST_VALIDATION_FAILED",
-				})
-			);
-		}
+		const status = yield* parseBulkReplayStatus(
+			yield* parseOptionalStringField(body, "status")
+		);
 		const endpointId = yield* parseOptionalStringField(body, "endpoint_id");
 		const createdAfterRaw = yield* parseOptionalStringField(
 			body,
@@ -267,6 +279,7 @@ const parseBulkReplayFilters = (
 			createdBefore,
 			endpointId,
 			limit,
+			status,
 		};
 	});
 
@@ -345,7 +358,7 @@ const ensureReplayableWebhookDispatch = (
 	if (attempt.status !== "failed" && attempt.status !== "dead") {
 		return Effect.fail(
 			new RequestValidationError({
-				message: `Dispatch ${attempt.id} is not failed and cannot be replayed.`,
+				message: `Dispatch ${attempt.id} is not failed or dead and cannot be replayed.`,
 				reasonCode: "REQUEST_VALIDATION_FAILED",
 			})
 		);
@@ -645,7 +658,7 @@ export const listWebhookDispatchesRoute: RouteDefinition = {
 	summary: "List outbound webhook dispatches",
 };
 
-/** Bulk replays failed outbound webhook dispatches for the current tenant. */
+/** Bulk replays failed or dead outbound webhook dispatches for the current tenant. */
 export const bulkReplayWebhookDispatchesRoute: RouteDefinition = {
 	handler: ({ request }) =>
 		Effect.gen(function* bulkReplayWebhookDispatchesHandler() {
@@ -686,7 +699,7 @@ export const bulkReplayWebhookDispatchesRoute: RouteDefinition = {
 						destination,
 						limit: filters.limit,
 						offset: 0,
-						status: ["failed"],
+						status: [filters.status],
 					})
 					.pipe(withTenant(tenantId));
 			const results = yield* Effect.forEach(attempts, (attempt) =>
@@ -726,7 +739,7 @@ export const bulkReplayWebhookDispatchesRoute: RouteDefinition = {
 	method: "POST",
 	path: "/webhooks/dispatches/replay",
 	protected: true,
-	summary: "Replay failed outbound webhook dispatches",
+	summary: "Replay failed or dead outbound webhook dispatches",
 };
 
 /** Replays one failed outbound webhook dispatch for the current tenant. */

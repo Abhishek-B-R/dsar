@@ -5,7 +5,7 @@ import { runCli } from "#src/runtime";
 
 export const E2E_API_URL = "https://example.test";
 export const E2E_API_TOKEN = "cli-e2e-token";
-const E2E_RUNTIME_AUTH = {
+export const E2E_RUNTIME_AUTH = {
 	config: {
 		auth: {
 			staticBearerTokens: {

@@ -199,11 +199,15 @@ const seedWebhookDispatch = async (
 			channel: input.channel ?? "webhook",
 			createdAt: input.createdAt ?? "2026-02-20T00:01:00.000Z",
 			destination: input.destination ?? "https://tenant.example/webhook",
-			error: input.status === "failed" ? "500 Internal Server Error" : "",
+			error:
+				input.status === "failed" || input.status === "dead"
+					? "500 Internal Server Error"
+					: "",
 			id: input.id,
 			notificationEventId: input.eventId,
 			requestId,
-			responseCode: input.status === "failed" ? 500 : 200,
+			responseCode:
+				input.status === "failed" || input.status === "dead" ? 500 : 200,
 			status: input.status ?? "failed",
 		})
 	);
@@ -700,6 +704,104 @@ describe(dsarInstance, () => {
 		expect(sent).toHaveLength(1);
 	});
 
+	it("lists and replays dead outbound webhook dispatches", async () => {
+		const persistence = makeMemoryPersistence();
+		await seedWebhookDispatch(persistence, {
+			eventId: "evt-webhook-dead",
+			id: "dispatch-dead-1",
+			requestId: "req-webhook-dead",
+			status: "dead",
+		});
+		await seedWebhookDispatch(persistence, {
+			eventId: "evt-webhook-failed",
+			id: "dispatch-failed-still",
+			requestId: "req-webhook-failed",
+			status: "failed",
+		});
+		const sent: unknown[] = [];
+		const runtime = dsarInstance({
+			adapters: {
+				notifications: makeNotificationAdapter({
+					send: (input) => {
+						sent.push(input);
+						return Effect.succeed({
+							responseCode: 200,
+							status: "delivered" as const,
+						});
+					},
+				}),
+			},
+			config: {
+				...TEST_RUNTIME_AUTH.config,
+				notificationWebhook: {
+					endpointId: "default",
+					retryDelayMs: 1,
+					retryMaxAttempts: 1,
+					signingSecret: "secret",
+					tenantScoped: true,
+					timeoutMs: 1000,
+					url: "https://tenant.example/webhook",
+				},
+			},
+			repos: { persistence },
+		});
+
+		const listResponse = await runtime.handler(
+			new Request("https://example.test/webhooks/dispatches?status=dead", {
+				headers: adminHeaders,
+			})
+		);
+		const listBody = (await listResponse.json()) as {
+			readonly data: {
+				readonly items: readonly {
+					readonly dispatchId: string;
+					readonly replayable: boolean;
+					readonly status: string;
+				}[];
+				readonly total: number;
+			};
+		};
+		expect(listResponse.status).toBe(200);
+		expect(listBody.data.total).toBe(1);
+		expect(listBody.data.items).toStrictEqual([
+			expect.objectContaining({
+				dispatchId: "dispatch-dead-1",
+				replayable: true,
+				status: "dead",
+			}),
+		]);
+
+		const replayResponse = await runtime.handler(
+			new Request(
+				"https://example.test/webhooks/dispatches/dispatch-dead-1/replay",
+				{
+					headers: {
+						...adminHeaders,
+						"x-idempotency-key": "replay-dead-once",
+					},
+					method: "POST",
+				}
+			)
+		);
+		const replayBody = (await replayResponse.json()) as {
+			readonly data: { readonly status: string };
+		};
+		expect(replayResponse.status).toBe(202);
+		expect(replayBody.data.status).toBe("replayed");
+		expect(sent).toHaveLength(1);
+
+		const listedAfterReplay = await runtime.handler(
+			new Request("https://example.test/webhooks/dispatches?status=dead", {
+				headers: adminHeaders,
+			})
+		);
+		const listedAfterReplayBody = (await listedAfterReplay.json()) as {
+			readonly data: { readonly total: number };
+		};
+		expect(listedAfterReplay.status).toBe(200);
+		expect(listedAfterReplayBody.data.total).toBe(0);
+	});
+
 	it("validates and paginates outbound webhook dispatch listing", async () => {
 		const persistence = makeMemoryPersistence();
 		for (const attempt of [
@@ -897,6 +999,83 @@ describe(dsarInstance, () => {
 			total: 0,
 		});
 		expect(sent).toHaveLength(2);
+	});
+
+	it("bulk replays dead outbound webhook dispatches without selecting failed rows", async () => {
+		const persistence = makeMemoryPersistence();
+		await seedWebhookDispatch(persistence, {
+			eventId: "evt-bulk-dead",
+			id: "dispatch-bulk-dead",
+			requestId: "req-bulk-dead",
+			status: "dead",
+		});
+		await seedWebhookDispatch(persistence, {
+			eventId: "evt-bulk-failed",
+			id: "dispatch-bulk-failed",
+			requestId: "req-bulk-failed",
+			status: "failed",
+		});
+		const sent: unknown[] = [];
+		const runtime = dsarInstance({
+			adapters: {
+				notifications: makeNotificationAdapter({
+					send: (input) => {
+						sent.push(input);
+						return Effect.succeed({
+							responseCode: 200,
+							status: "delivered" as const,
+						});
+					},
+				}),
+			},
+			config: {
+				...TEST_RUNTIME_AUTH.config,
+				notificationWebhook: {
+					endpointId: "default",
+					retryDelayMs: 1,
+					retryMaxAttempts: 1,
+					signingSecret: "secret",
+					tenantScoped: true,
+					timeoutMs: 1000,
+					url: "https://tenant.example/webhook",
+				},
+			},
+			repos: { persistence },
+		});
+
+		const response = await runtime.handler(
+			new Request("https://example.test/webhooks/dispatches/replay", {
+				body: JSON.stringify({ status: "dead" }),
+				headers: {
+					...adminHeaders,
+					"content-type": "application/json",
+					"x-idempotency-key": "bulk-dead-once",
+				},
+				method: "POST",
+			})
+		);
+		const body = (await response.json()) as {
+			readonly data: {
+				readonly replayed: number;
+				readonly results: readonly {
+					readonly dispatchId: string;
+					readonly status: string;
+				}[];
+				readonly total: number;
+			};
+		};
+		expect(response.status).toBe(202);
+		expect(body.data).toMatchObject({
+			replayed: 1,
+			total: 1,
+		});
+		expect(body.data.results).toStrictEqual([
+			expect.objectContaining({
+				dispatchId: "dispatch-bulk-dead",
+				status: "replayed",
+			}),
+		]);
+		expect(sent).toHaveLength(1);
 	});
 
 	it("bulk replay respects filters and continues after per-dispatch failures", async () => {
