@@ -3,9 +3,12 @@ import type {
 	FilesystemArtifactReference,
 } from "../types";
 
+// Collapse ".." before the charset filter so generated keys cannot contain
+// parent-directory path segments. Dots in filenames such as `export.pdf` stay.
 const safeSegment = (value: string) =>
 	value
 		.toLowerCase()
+		.replaceAll("..", "-")
 		.replaceAll(/[^a-z0-9._-]/g, "-")
 		.replaceAll(/-+/g, "-")
 		.replaceAll(/^-|-$/g, "");

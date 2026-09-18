@@ -14,7 +14,6 @@ import {
 } from "../../types/errors";
 import type { MappedError } from "./shared";
 import {
-	asRecordField,
 	asString,
 	asStringArray,
 	asStringField,
@@ -64,19 +63,24 @@ const mapForbidden = (error: unknown): MappedError | undefined => {
 	return undefined;
 };
 
-const resolveValidationCode = (
-	error: Readonly<Record<string, unknown>>
-): MappedError["code"] => {
-	const reasonCode = asString(error.reasonCode);
-	if (reasonCode) {
-		return toCatalogCode(reasonCode);
+const validationDetails = (error: unknown): unknown => {
+	if (error instanceof RequestValidationError) {
+		return error.details;
 	}
-	const details = asRecordField(error, "details");
-	const reasonFromDetails = details ? asString(details.reasonCode) : undefined;
-	if (reasonFromDetails) {
-		return toCatalogCode(reasonFromDetails);
+	if (error !== null && typeof error === "object" && "details" in error) {
+		return error.details;
 	}
-	return "REQUEST_VALIDATION_FAILED";
+	return undefined;
+};
+
+const requestedValidationReason = (error: unknown): string | undefined => {
+	if (error instanceof RequestValidationError) {
+		return error.reasonCode;
+	}
+	if (error !== null && typeof error === "object" && "reasonCode" in error) {
+		return asString(error.reasonCode);
+	}
+	return asString(asRecord(validationDetails(error))?.reasonCode);
 };
 
 const mapValidation = (error: unknown): MappedError | undefined => {
@@ -86,19 +90,16 @@ const mapValidation = (error: unknown): MappedError | undefined => {
 	) {
 		return undefined;
 	}
-	const errorRecord = asRecord(error);
-	const trace =
-		errorRecord && "details" in errorRecord
-			? asRecord(errorRecord.details)
-			: undefined;
-	const code = errorRecord
-		? resolveValidationCode(errorRecord)
-		: "REQUEST_VALIDATION_FAILED";
+	const resolved = resolveBackendErrorCatalogEntry(
+		requestedValidationReason(error) ?? "REQUEST_VALIDATION_FAILED"
+	);
+	const code =
+		resolved.status === 400 ? resolved.code : "REQUEST_VALIDATION_FAILED";
 	return {
 		code,
 		message: getErrorMessage(error, "Validation failed."),
 		status: resolveBackendErrorCatalogEntry(code).status,
-		trace,
+		trace: asRecord(validationDetails(error)),
 	};
 };
 

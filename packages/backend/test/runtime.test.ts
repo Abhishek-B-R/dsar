@@ -422,10 +422,8 @@ describe(dsarInstance, () => {
 			401,
 			"AUTH_ACTOR_CONTEXT_MISSING",
 		]);
-		expect([400, 500]).toContain(badPayload.status);
-		expect(["REQUEST_VALIDATION_FAILED", "INTERNAL_RUNTIME_ERROR"]).toContain(
-			badPayloadBody.error.code
-		);
+		expect(badPayload.status).toBe(400);
+		expect(badPayloadBody.error.code).toBe("REQUEST_VALIDATION_FAILED");
 		expect([
 			{
 				docsUrl: notFoundBody.error.docsUrl,
