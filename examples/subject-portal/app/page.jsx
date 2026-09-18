@@ -12,7 +12,7 @@ const backendUrl = process.env.NEXT_PUBLIC_DSAR_URL ?? LOCAL_SELF_HOST_URL;
 const Page = () => (
 	<DsarProvider mode={selfHosted({ url: backendUrl })}>
 		<SubjectPortal
-			email="subject@example.com"
+			defaultEmail="subject@example.com"
 			subjectId="subject-portal-user"
 		/>
 	</DsarProvider>

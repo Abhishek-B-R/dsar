@@ -16,24 +16,58 @@ export interface SubjectPortalProps {
 	readonly defaultJurisdiction?: string;
 	/** Identifier used for GET /subjects/:subjectId. Must match the signed-in subject. */
 	readonly subjectId: string;
-	/** Stamped on create so the subject list can find the request. */
-	readonly email?: string;
+	/** Prefills the email field. Also used to match the filing to this subject. */
+	readonly defaultEmail?: string;
 }
 
-/**
- * Subject-facing portal: file a request and list that subject's requests.
- * Does not call GET /requests (operator queue).
- */
+const JURISDICTIONS = [
+	{ label: "European Union (GDPR)", value: "eu" },
+	{ label: "United Kingdom", value: "uk" },
+	{ label: "California (CPRA)", value: "california" },
+	{ label: "Canada", value: "canada" },
+	{ label: "Brazil (LGPD)", value: "brazil" },
+	{ label: "Australia", value: "australia" },
+] as const;
+
+const REQUEST_TYPES = [
+	{ label: "Access my data", value: "access" },
+	{ label: "Delete my data", value: "delete" },
+	{ label: "Correct my data", value: "correct" },
+	{ label: "Export my data", value: "portability" },
+	{ label: "Something else", value: "other" },
+] as const;
+
+const formatWhen = (value: string | undefined): string | undefined => {
+	if (value === undefined) {
+		return undefined;
+	}
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) {
+		return value;
+	}
+	return date.toLocaleDateString(undefined, {
+		day: "numeric",
+		month: "short",
+		year: "numeric",
+	});
+};
+
 export const SubjectPortal = ({
+	defaultEmail = "",
 	defaultJurisdiction = "eu",
-	email,
 	subjectId,
 }: SubjectPortalProps) => {
 	const client = useDsarClient();
+	const nameId = useId();
+	const emailId = useId();
 	const jurisdictionId = useId();
-	const requestFieldId = useId();
+	const typeId = useId();
+	const detailsId = useId();
+	const [name, setName] = useState("");
+	const [email, setEmail] = useState(defaultEmail);
 	const [jurisdiction, setJurisdiction] = useState(defaultJurisdiction);
-	const [rawText, setRawText] = useState("Please provide my personal data.");
+	const [requestType, setRequestType] = useState("access");
+	const [rawText, setRawText] = useState("");
 	const [rows, setRows] = useState<readonly RequestRow[]>([]);
 	const [alertMessage, setAlertMessage] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
@@ -57,21 +91,38 @@ export const SubjectPortal = ({
 
 	const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
+		const trimmedEmail = email.trim();
+		if (trimmedEmail.length === 0) {
+			setAlertMessage("Add an email so we can match this request to you.");
+			return;
+		}
 		setPending(true);
 		setAlertMessage(null);
 		try {
 			await client.post("/requests", {
 				intakeSource: {
 					channel: "web",
-					rawText,
+					rawText:
+						rawText.trim().length > 0
+							? rawText.trim()
+							: `Please ${requestType} my personal data.`,
 					receivedAt: new Date().toISOString(),
+					type: "portal",
 				},
 				jurisdiction,
-				...(email === undefined
-					? {}
-					: { requestor: { email, type: "subject" } }),
+				requestType,
+				requestor: {
+					email: trimmedEmail,
+					...(name.trim().length > 0 ? { name: name.trim() } : {}),
+					type: "subject",
+				},
+				subject: {
+					email: trimmedEmail,
+					subjectId,
+				},
 			});
 			await refresh();
+			setRawText("");
 		} catch (error) {
 			setAlertMessage(
 				error instanceof DsarBrowserError
@@ -87,25 +138,69 @@ export const SubjectPortal = ({
 		<div className="dsar-root">
 			<h1>Privacy requests</h1>
 			<p className="dsar-lede">
-				File an access or deletion request. Status updates land in this list.
+				Tell us who you are and what you want done with your data.
 			</p>
 			<div className="dsar-panel">
 				<form className="dsar-form" onSubmit={onSubmit}>
-					<label className="dsar-field" htmlFor={jurisdictionId}>
-						<span>Jurisdiction</span>
+					<label className="dsar-field" htmlFor={nameId}>
+						<span>Full name</span>
 						<input
+							autoComplete="name"
+							id={nameId}
+							name="name"
+							onChange={(event) => setName(event.target.value)}
+							value={name}
+						/>
+					</label>
+					<label className="dsar-field" htmlFor={emailId}>
+						<span>Email</span>
+						<input
+							autoComplete="email"
+							id={emailId}
+							name="email"
+							onChange={(event) => setEmail(event.target.value)}
+							required
+							type="email"
+							value={email}
+						/>
+					</label>
+					<label className="dsar-field" htmlFor={jurisdictionId}>
+						<span>Where do you live?</span>
+						<select
 							id={jurisdictionId}
 							name="jurisdiction"
 							onChange={(event) => setJurisdiction(event.target.value)}
 							value={jurisdiction}
-						/>
+						>
+							{JURISDICTIONS.map((item) => (
+								<option key={item.value} value={item.value}>
+									{item.label}
+								</option>
+							))}
+						</select>
 					</label>
-					<label className="dsar-field" htmlFor={requestFieldId}>
-						<span>What are you asking for?</span>
+					<label className="dsar-field" htmlFor={typeId}>
+						<span>Request type</span>
+						<select
+							id={typeId}
+							name="requestType"
+							onChange={(event) => setRequestType(event.target.value)}
+							value={requestType}
+						>
+							{REQUEST_TYPES.map((item) => (
+								<option key={item.value} value={item.value}>
+									{item.label}
+								</option>
+							))}
+						</select>
+					</label>
+					<label className="dsar-field" htmlFor={detailsId}>
+						<span>Details (optional)</span>
 						<textarea
-							id={requestFieldId}
+							id={detailsId}
 							name="rawText"
 							onChange={(event) => setRawText(event.target.value)}
+							placeholder="Anything we should know: accounts, products, dates."
 							value={rawText}
 						/>
 					</label>
@@ -127,9 +222,12 @@ export const SubjectPortal = ({
 					<ul className="dsar-list">
 						{rows.map((row) => (
 							<li className="dsar-item" key={row.id}>
-								<span className="dsar-id" title={row.id}>
-									{row.id}
-								</span>
+								<div className="dsar-item-main">
+									<strong>{formatWhen(row.receivedAt) ?? "Filed"}</strong>
+									<span className="dsar-meta" title={row.id}>
+										{row.id.slice(0, 8)}
+									</span>
+								</div>
 								{row.status === undefined ? null : (
 									<span className="dsar-status">{row.status}</span>
 								)}
