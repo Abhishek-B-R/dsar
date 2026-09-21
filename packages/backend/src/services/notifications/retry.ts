@@ -29,6 +29,7 @@ import {
 import { dispatchWebhookNotification } from "./webhook";
 
 const DEFAULT_WEBHOOK_ENDPOINT_ID = "default";
+const DEAD_WEBHOOK_HOOK_TIMEOUT_MS = 5_000;
 const NOTIFICATION_EVENT_TYPES = [
 	"request_captured",
 	"clock_due_changed",
@@ -57,6 +58,12 @@ const isNotificationEventType = (
 	return false;
 };
 
+/**
+ * Parses a persisted notification event type before replay.
+ *
+ * @param value - Stored event type string.
+ * @returns The typed event name, or `REQUEST_VALIDATION_FAILED` when unknown.
+ */
 const parseNotificationEventType = (
 	value: string
 ): Effect.Effect<NotificationEventType, RequestValidationError> => {
@@ -83,6 +90,12 @@ export const currentIsoTimestamp = Effect.fn("currentIsoTimestamp")(
 	}
 );
 
+/**
+ * Builds a webhook dispatch payload from a persisted notification event.
+ *
+ * @param input - Event id, correlation, idempotency key, and draft fields.
+ * @returns Adapter input for one outbound send.
+ */
 const toDispatchInput = (input: {
 	readonly eventId: string;
 	readonly correlationId: string;
@@ -107,6 +120,13 @@ const toDispatchInput = (input: {
 	};
 };
 
+/**
+ * Whether a notifications adapter can send on `email` or `webhook`.
+ *
+ * @param adapter - Bound notifications adapter, if any.
+ * @param channel - Channel to check.
+ * @returns True when the adapter declares the channel, or webhook on non-Resend keys.
+ */
 const supportsNotificationChannel = (
 	adapter:
 		| { readonly channels?: readonly string[]; readonly key: string }
@@ -122,6 +142,12 @@ const supportsNotificationChannel = (
 	return channel === "webhook" && adapter.key !== "outbound-resend";
 };
 
+/**
+ * Loads or creates the configured webhook endpoint signing secret.
+ *
+ * @param input - Webhook config, runtime services, and tenant id.
+ * @returns Effect yielding the persisted signing secret.
+ */
 const resolveWebhookSigningKey = (input: {
 	readonly config: NonNullable<
 		RuntimeServices["config"]["notificationWebhook"]
@@ -296,8 +322,8 @@ const notifyDeadWebhook = (input: {
 		if (!hook) {
 			return;
 		}
-		yield* Effect.tryPromise(() =>
-			Promise.resolve(
+		yield* Effect.tryPromise(() => {
+			const work = Promise.resolve(
 				hook({
 					attempt: input.attempt,
 					attemptId: input.attemptId,
@@ -309,8 +335,21 @@ const notifyDeadWebhook = (input: {
 					responseCode: input.responseCode,
 					tenantId: input.tenantId,
 				})
-			)
-		).pipe(Effect.catch(() => Effect.void));
+			);
+			return new Promise<void>((resolve) => {
+				const timer = setTimeout(resolve, DEAD_WEBHOOK_HOOK_TIMEOUT_MS);
+				Promise.resolve(work).then(
+					() => {
+						clearTimeout(timer);
+						resolve();
+					},
+					() => {
+						clearTimeout(timer);
+						resolve();
+					}
+				);
+			});
+		}).pipe(Effect.catch(() => Effect.void));
 	});
 
 /**
@@ -543,7 +582,7 @@ export const deliverDueWebhookRetries = Effect.fn("deliverDueWebhookRetries")(
  */
 export const runWebhookRetryWorker = Effect.fn("runWebhookRetryWorker")(
 	function* runWebhookRetryWorkerProgram() {
-		yield* deliverDueWebhookRetries();
+		yield* deliverDueWebhookRetries().pipe(Effect.catch(() => Effect.void));
 		yield* Effect.forever(
 			Effect.gen(function* pollDueWebhookRetries() {
 				yield* Effect.sleep(Duration.millis(WEBHOOK_RETRY_WORKER_POLL_MS));

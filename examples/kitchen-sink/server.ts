@@ -168,6 +168,7 @@ const start = async (): Promise<void> => {
 	const runtime = dsarInstance({
 		...runtimeConfig,
 		repos: runtimeReposFromPersistence(persistence),
+		runWebhookRetryWorker: true,
 	});
 	const demoApp = openDemoApp(
 		process.env.DSAR_DEMO_APP_SQLITE_PATH ?? ".dsar-acme.db"
