@@ -29,7 +29,7 @@ import {
 import { dispatchWebhookNotification } from "./webhook";
 
 const DEFAULT_WEBHOOK_ENDPOINT_ID = "default";
-const DEAD_WEBHOOK_HOOK_TIMEOUT_MS = 5_000;
+const DEAD_WEBHOOK_HOOK_TIMEOUT_MS = 5000;
 const NOTIFICATION_EVENT_TYPES = [
 	"request_captured",
 	"clock_due_changed",
@@ -322,8 +322,8 @@ const notifyDeadWebhook = (input: {
 		if (!hook) {
 			return;
 		}
-		yield* Effect.tryPromise(() => {
-			const work = Promise.resolve(
+		yield* Effect.tryPromise(() =>
+			Promise.resolve(
 				hook({
 					attempt: input.attempt,
 					attemptId: input.attemptId,
@@ -335,21 +335,11 @@ const notifyDeadWebhook = (input: {
 					responseCode: input.responseCode,
 					tenantId: input.tenantId,
 				})
-			);
-			return new Promise<void>((resolve) => {
-				const timer = setTimeout(resolve, DEAD_WEBHOOK_HOOK_TIMEOUT_MS);
-				Promise.resolve(work).then(
-					() => {
-						clearTimeout(timer);
-						resolve();
-					},
-					() => {
-						clearTimeout(timer);
-						resolve();
-					}
-				);
-			});
-		}).pipe(Effect.catch(() => Effect.void));
+			)
+		).pipe(
+			Effect.timeout(Duration.millis(DEAD_WEBHOOK_HOOK_TIMEOUT_MS)),
+			Effect.catch(() => Effect.void)
+		);
 	});
 
 /**
