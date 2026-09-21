@@ -250,4 +250,9 @@ export interface DsarInstanceOptions {
 		Partial<Omit<RuntimeRepos, "persistence">>;
 	/** Adapter overrides for custom host wiring. */
 	readonly adapters?: Partial<RuntimeAdapters>;
+	/**
+	 * When true, fork the durable webhook retry worker beside the HTTP handler.
+	 * Tests leave this unset so Vitest does not leak a poll loop.
+	 */
+	readonly runWebhookRetryWorker?: boolean;
 }
