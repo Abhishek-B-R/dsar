@@ -5,16 +5,23 @@
  * Local: `selfHosted({ url: "http://kitchen-sink.localhost:1355/api/v1" })`
  */
 
+/** Transport pointing at hosted inth.app. */
 export interface HostedMode {
+	/** Discriminator for hosted SaaS. */
 	readonly kind: "hosted";
+	/** Absolute DSAR HTTP origin. */
 	readonly baseUrl: string;
 }
 
+/** Transport pointing at a self-hosted DSAR HTTP server. */
 export interface SelfHostedMode {
+	/** Discriminator for self-hosted HTTP. */
 	readonly kind: "self-hosted";
+	/** Absolute DSAR HTTP origin. */
 	readonly baseUrl: string;
 }
 
+/** Hosted or self-hosted browser transport. */
 export type DsarClientMode = HostedMode | SelfHostedMode;
 
 /** Default local kitchen-sink origin used by the portal examples. */

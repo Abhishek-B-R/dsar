@@ -12,6 +12,7 @@ interface RequestRow {
 	readonly receivedAt?: string;
 }
 
+/** Props for {@link SubjectPortal}. */
 export interface SubjectPortalProps {
 	/** Launch-pack jurisdiction, default `eu`. */
 	readonly defaultJurisdiction?: string;
@@ -78,11 +79,8 @@ const formatWhen = (value: string | undefined): string | undefined => {
  * @param props.subjectId - Subject id for GET /subjects/:subjectId.
  * @returns The subject portal UI.
  */
-export const SubjectPortal = ({
-	defaultEmail = "",
-	defaultJurisdiction = "eu",
-	subjectId,
-}: SubjectPortalProps) => {
+export const SubjectPortal = (props: SubjectPortalProps) => {
+	const { defaultEmail = "", defaultJurisdiction = "eu", subjectId } = props;
 	const client = useDsarClient();
 	const nameId = useId();
 	const emailId = useId();

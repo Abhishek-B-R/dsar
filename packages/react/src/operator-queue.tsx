@@ -180,11 +180,7 @@ const identityUnlocked = (
 	status: string | undefined,
 	verified: boolean
 ): boolean => {
-	if (
-		status === "fulfilled" ||
-		status === "refused" ||
-		status === "closed"
-	) {
+	if (status === "fulfilled" || status === "refused" || status === "closed") {
 		return true;
 	}
 	return status === "in_progress" && verified;
@@ -810,7 +806,9 @@ export const OperatorQueue = () => {
 
 	const exportAcme = async (email: string) => {
 		if (!isLocalDemoOrigin(client.baseUrl)) {
-			setAlertMessage("Acme demo export is only available against kitchen-sink.");
+			setAlertMessage(
+				"Acme demo export is only available against kitchen-sink."
+			);
 			return;
 		}
 		try {
@@ -867,7 +865,9 @@ export const OperatorQueue = () => {
 
 	const eraseAcme = async (id: string, email: string) => {
 		if (!isLocalDemoOrigin(client.baseUrl)) {
-			setAlertMessage("Acme demo erase is only available against kitchen-sink.");
+			setAlertMessage(
+				"Acme demo erase is only available against kitchen-sink."
+			);
 			return;
 		}
 		setBusyId(id);

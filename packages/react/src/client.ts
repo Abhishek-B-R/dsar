@@ -4,16 +4,24 @@
  * Local demos inject the token in the Next/Bun route, not in the widget.
  */
 
+/** Failed DSAR envelope returned to the browser client. */
 export interface DsarEnvelopeError {
+	/** Catalog or client error code. */
 	readonly code: string;
+	/** Human-readable failure. */
 	readonly message: string;
+	/** HTTP status from the envelope or response. */
 	readonly status: number;
 }
 
+/** Thrown when a browser DSAR call does not return `ok: true`. */
 export class DsarBrowserError extends Error {
 	readonly code: string;
 	readonly status: number;
 
+	/**
+	 * @param error - Envelope fields copied onto the Error instance.
+	 */
 	constructor(error: DsarEnvelopeError) {
 		super(error.message);
 		this.name = "DsarBrowserError";
@@ -22,9 +30,13 @@ export class DsarBrowserError extends Error {
 	}
 }
 
+/** Cookie-based GET/POST client used by the React widgets. */
 export interface DsarBrowserClient {
+	/** DSAR HTTP origin, including `/api/v1` when self-hosted. */
 	readonly baseUrl: string;
+	/** GET a path and unwrap the success envelope. */
 	get: <T>(path: string) => Promise<T>;
+	/** POST JSON to a path and unwrap the success envelope. */
 	post: <T>(path: string, body: unknown) => Promise<T>;
 }
 

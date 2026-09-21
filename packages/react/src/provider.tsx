@@ -9,6 +9,7 @@ import type { DsarClientMode } from "./hosted";
 
 const DsarClientContext = createContext<DsarBrowserClient | null>(null);
 
+/** Props for {@link DsarProvider}. */
 export interface DsarProviderProps {
 	/** Widget tree that calls `useDsarClient`. */
 	readonly children: ReactNode;
@@ -25,7 +26,8 @@ export interface DsarProviderProps {
  * @param props - Children, transport mode, and optional fetch.
  * @returns The React context provider.
  */
-export const DsarProvider = ({ children, fetch, mode }: DsarProviderProps) => {
+export const DsarProvider = (props: DsarProviderProps) => {
+	const { children, fetch, mode } = props;
 	const client = useMemo(
 		() => createDsarBrowserClient({ baseUrl: mode.baseUrl, fetch }),
 		[fetch, mode.baseUrl]
