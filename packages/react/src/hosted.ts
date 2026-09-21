@@ -32,8 +32,10 @@ const requireUrl = (url: string, label: string): string => {
 };
 
 /**
- * Hosted inth.com backend.
+ * Hosted inth.app backend.
  *
+ * @param input - Project slug, for example `acme`.
+ * @returns Mode pointing at `https://{project}.inth.app/dsar`.
  * @example
  * hosted({ project: "acme" })
  * // https://acme.inth.app/dsar
@@ -57,6 +59,8 @@ export const hosted = (input: { readonly project: string }): HostedMode => {
 /**
  * Self-hosted DSAR HTTP server (kitchen-sink locally, or your own deploy).
  *
+ * @param input - Absolute DSAR HTTP base URL.
+ * @returns Mode pointing at that URL with a trailing slash stripped.
  * @example
  * selfHosted({ url: "http://kitchen-sink.localhost:1355/api/v1" })
  */

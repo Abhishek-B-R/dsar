@@ -13,6 +13,7 @@ interface RequestRow {
 }
 
 export interface SubjectPortalProps {
+	/** Launch-pack jurisdiction, default `eu`. */
 	readonly defaultJurisdiction?: string;
 	/** Identifier used for GET /subjects/:subjectId. Must match the signed-in subject. */
 	readonly subjectId: string;
@@ -23,10 +24,10 @@ export interface SubjectPortalProps {
 const JURISDICTIONS = [
 	{ label: "European Union (GDPR)", value: "eu" },
 	{ label: "United Kingdom", value: "uk" },
-	{ label: "California (CPRA)", value: "california" },
-	{ label: "Canada", value: "canada" },
-	{ label: "Brazil (LGPD)", value: "brazil" },
-	{ label: "Australia", value: "australia" },
+	{ label: "United States", value: "us" },
+	{ label: "California (CPRA)", value: "us-ca" },
+	{ label: "Virginia (VCDPA)", value: "us-va" },
+	{ label: "Colorado (CPA)", value: "us-co" },
 ] as const;
 
 const detailsPrompt = (requestType: string): string => {
@@ -68,6 +69,15 @@ const formatWhen = (value: string | undefined): string | undefined => {
 	});
 };
 
+/**
+ * Subject-facing intake and request list for the portal example.
+ *
+ * @param props - Portal configuration.
+ * @param props.defaultEmail - Prefills the email field.
+ * @param props.defaultJurisdiction - Launch-pack jurisdiction, default `eu`.
+ * @param props.subjectId - Subject id for GET /subjects/:subjectId.
+ * @returns The subject portal UI.
+ */
 export const SubjectPortal = ({
 	defaultEmail = "",
 	defaultJurisdiction = "eu",

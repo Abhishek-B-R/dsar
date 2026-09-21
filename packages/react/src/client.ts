@@ -71,6 +71,12 @@ const readEnvelope = async <T>(response: Response): Promise<T> => {
 	});
 };
 
+/**
+ * Builds a token-free browser client against a hosted or BFF base URL.
+ *
+ * @param input - Base URL and optional fetch override.
+ * @returns GET/POST helpers that unwrap DSAR envelopes.
+ */
 export const createDsarBrowserClient = (input: {
 	readonly baseUrl: string;
 	readonly fetch?: typeof fetch;

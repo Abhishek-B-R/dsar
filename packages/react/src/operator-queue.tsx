@@ -125,6 +125,19 @@ const formatMoney = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
 const demoOrigin = (dsarBaseUrl: string): string =>
 	dsarBaseUrl.replace(/\/api\/v1\/?$/, "");
 
+const isLocalDemoOrigin = (dsarBaseUrl: string): boolean => {
+	try {
+		const host = new URL(dsarBaseUrl).hostname;
+		return (
+			host === "kitchen-sink.localhost" ||
+			host === "localhost" ||
+			host === "127.0.0.1"
+		);
+	} catch {
+		return false;
+	}
+};
+
 const demoPeopleUrl = (dsarBaseUrl: string, email: string): string =>
 	`${demoOrigin(dsarBaseUrl)}/demo/people?email=${encodeURIComponent(email)}`;
 
@@ -163,11 +176,19 @@ const emptyHoldCopy = (
 	return "No product account for this email. There is nothing to disclose, correct, or erase.";
 };
 
-const identityUnlocked = (status: string | undefined): boolean =>
-	status === "in_progress" ||
-	status === "fulfilled" ||
-	status === "refused" ||
-	status === "closed";
+const identityUnlocked = (
+	status: string | undefined,
+	verified: boolean
+): boolean => {
+	if (
+		status === "fulfilled" ||
+		status === "refused" ||
+		status === "closed"
+	) {
+		return true;
+	}
+	return status === "in_progress" && verified;
+};
 
 const IdentityStep = ({
 	filerEmail,
@@ -541,12 +562,14 @@ const UnlockedRecords = ({
 	person,
 	requestType,
 	status,
+	verified,
 }: {
 	readonly person: AcmePerson | null;
 	readonly requestType: string | undefined;
 	readonly status: string | undefined;
+	readonly verified: boolean;
 }) => {
-	if (!identityUnlocked(status)) {
+	if (!identityUnlocked(status, verified)) {
 		return null;
 	}
 	return (
@@ -614,6 +637,7 @@ const QueueCard = ({
 	refuseOpen,
 	refuseReason,
 	row,
+	verified,
 }: {
 	readonly busy: boolean;
 	readonly detail: RequestDetail | undefined;
@@ -622,9 +646,13 @@ const QueueCard = ({
 	readonly onErase: () => void;
 	readonly onExport: () => void;
 	readonly onRefuse: () => void;
+	readonly onRefuseCancel: () => void;
+	readonly onRefuseReason: (value: string) => void;
+	readonly person: AcmePerson | null;
 	readonly refuseOpen: boolean;
 	readonly refuseReason: string;
 	readonly row: QueueItem;
+	readonly verified: boolean;
 }) => {
 	const status = detail?.status ?? row.status;
 	const text = intakeText(detail);
@@ -656,6 +684,7 @@ const QueueCard = ({
 				person={person}
 				requestType={requestType}
 				status={status}
+				verified={verified}
 			/>
 			<CorrectionSlot
 				busy={busy}
@@ -688,6 +717,12 @@ const QueueCard = ({
 	);
 };
 
+/**
+ * Operator request queue. Identity is a match gate: Acme records stay hidden
+ * until the operator confirms the filer, or the request is already closed.
+ *
+ * @returns The dashboard queue UI.
+ */
 export const OperatorQueue = () => {
 	const client = useDsarClient();
 	const [rows, setRows] = useState<readonly QueueItem[]>([]);
@@ -700,6 +735,9 @@ export const OperatorQueue = () => {
 	const [refuseReason, setRefuseReason] = useState("");
 	const [people, setPeople] = useState<
 		Readonly<Record<string, AcmePerson | null>>
+	>({});
+	const [verifiedIds, setVerifiedIds] = useState<
+		Readonly<Record<string, true>>
 	>({});
 
 	const refresh = useCallback(async () => {
@@ -717,6 +755,10 @@ export const OperatorQueue = () => {
 			})
 		);
 		setDetails(Object.fromEntries(loaded));
+		if (!isLocalDemoOrigin(client.baseUrl)) {
+			setPeople({});
+			return;
+		}
 		const lookedUp = await Promise.all(
 			loaded.map(async ([id, detail]) => {
 				const email = detail.requestor?.email ?? undefined;
@@ -751,6 +793,9 @@ export const OperatorQueue = () => {
 		setAlertMessage(null);
 		try {
 			await client.post(path, body);
+			if (path.endsWith("/verification/approve")) {
+				setVerifiedIds((current) => ({ ...current, [id]: true }));
+			}
 			setRefuseId(null);
 			setRefuseReason("");
 			await refresh();
@@ -764,6 +809,10 @@ export const OperatorQueue = () => {
 	};
 
 	const exportAcme = async (email: string) => {
+		if (!isLocalDemoOrigin(client.baseUrl)) {
+			setAlertMessage("Acme demo export is only available against kitchen-sink.");
+			return;
+		}
 		try {
 			const response = await fetch(demoExportUrl(client.baseUrl, email), {
 				credentials: "include",
@@ -789,6 +838,12 @@ export const OperatorQueue = () => {
 		email: string,
 		input: { name: string; plan: string }
 	) => {
+		if (!isLocalDemoOrigin(client.baseUrl)) {
+			setAlertMessage(
+				"Acme demo correction is only available against kitchen-sink."
+			);
+			return;
+		}
 		setBusyId(id);
 		setAlertMessage(null);
 		try {
@@ -811,6 +866,10 @@ export const OperatorQueue = () => {
 	};
 
 	const eraseAcme = async (id: string, email: string) => {
+		if (!isLocalDemoOrigin(client.baseUrl)) {
+			setAlertMessage("Acme demo erase is only available against kitchen-sink.");
+			return;
+		}
 		setBusyId(id);
 		setAlertMessage(null);
 		try {
@@ -909,6 +968,7 @@ export const OperatorQueue = () => {
 								refuseOpen={refuseId === row.id}
 								refuseReason={refuseReason}
 								row={row}
+								verified={verifiedIds[row.id] === true}
 							/>
 						))}
 					</ul>

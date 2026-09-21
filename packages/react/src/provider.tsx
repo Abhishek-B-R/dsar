@@ -10,14 +10,20 @@ import type { DsarClientMode } from "./hosted";
 const DsarClientContext = createContext<DsarBrowserClient | null>(null);
 
 export interface DsarProviderProps {
+	/** Widget tree that calls `useDsarClient`. */
 	readonly children: ReactNode;
+	/** Hosted or self-hosted transport. */
 	readonly mode: DsarClientMode;
+	/** Optional fetch override for tests. */
 	readonly fetch?: typeof fetch;
 }
 
 /**
  * Root provider. Same role as c15t's ConsentProvider:
  * one transport, then hooks and widgets read it.
+ *
+ * @param props - Children, transport mode, and optional fetch.
+ * @returns The React context provider.
  */
 export const DsarProvider = ({ children, fetch, mode }: DsarProviderProps) => {
 	const client = useMemo(
@@ -31,6 +37,11 @@ export const DsarProvider = ({ children, fetch, mode }: DsarProviderProps) => {
 	);
 };
 
+/**
+ * Browser DSAR client from the nearest `DsarProvider`.
+ *
+ * @returns The cookie-based HTTP client.
+ */
 export const useDsarClient = (): DsarBrowserClient => {
 	const client = useContext(DsarClientContext);
 	if (client === null) {
