@@ -55,6 +55,13 @@ fail typecheck or fail at the layer boundary.
 not in this repo. Published `0.0.5` already omitted that subpath. `0.0.4` still
 had it. Delete any remaining `dsar/adapter-c15t` import.
 
+**npm tarballs still ship `workspace:*` and `catalog:effect`.** `npm install
+dsar@0.0.5` fails with `EUNSUPPORTEDPROTOCOL catalog:effect`. The pending
+`1.0.0` Version Packages PR still writes those specifiers into
+`packages/dsar/package.json`. Do not treat `npm install dsar@1.0.0` as a
+working path until a publish resolves workspace and catalog protocol strings.
+Until then, install from this git repo.
+
 **Chat SDK persistence.** SQL-backed Chat SDK state now needs migration
 `0003-chat-runtime-lists-and-queues` (`chat_state_list_keys`,
 `chat_state_lists`, `chat_state_queues`). Runtimes that already apply ordered
@@ -64,8 +71,9 @@ to run `0003` before serving Chat SDK traffic.
 ## Migration steps
 
 1. Install Node.js 24. Confirm with `node --version`.
-2. Install `dsar@1.0.0` once it is on npm. Until that publish, stay on `0.0.5`
-   or use this git line after `1.0.0` is tagged.
+2. Do not `npm install dsar@0.0.5` or `dsar@1.0.0` until a release rewrites
+   `workspace:*` and `catalog:effect` in the published tarball. Use this git
+   repo, or wait for that publish.
 3. If the host imports Effect types or constructs DSAR layers, set `effect` and
    matching `@effect/*` packages to `4.0.0-beta.101`.
 4. If the host typechecks DSAR types, set `typescript` to `7.0.2` (or another
