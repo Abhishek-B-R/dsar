@@ -194,6 +194,7 @@ describe("policy upgrade HTTP workflow", () => {
 		const captured = await postJson(runtime, "/requests/capture", {
 			intakeSource: {
 				channel: "api",
+				rawText: "please provide my data",
 				receivedAt: "2026-01-01T00:00:00.000Z",
 				type: "api",
 			},
