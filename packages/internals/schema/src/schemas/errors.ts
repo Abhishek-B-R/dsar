@@ -10,7 +10,7 @@ import { IsoTimestampSchema, MetadataSchema } from "./shared";
 export const ErrorCodeSchema = Schema.String.pipe(
 	Schema.annotate({
 		message:
-			"SCHEMA_RUNTIME_ERROR: Invalid error code. See https://dsar-sdk.dev/errors/dsar-sch-1500",
+			"SCHEMA_RUNTIME_ERROR: Invalid error code. See https://dsar-sdk.dev/docs/reference/errors/dsar-sch-1500",
 	})
 );
 
